@@ -1,0 +1,358 @@
+% =============================================================================
+\section{Introduction}
+\label{sec:intro}
+% =============================================================================
+
+Safety-critical avionics software must demonstrate that tests adequately
+cover the behaviors specified in requirements. This coverage analysis
+requires a formal representation of the requirements, yet in practice,
+both requirements and test cases are written in natural language. Without
+formalization, inconsistencies between requirements and tests can go
+undetected, potentially compromising the safety of the final system.
+Translating them into a formal form is therefore essential, but it is
+currently a manual process: slow, expensive, and prone to human error.
+As the number of requirements grows, manual formalization becomes a
+bottleneck in the certification workflow.
+
+The broader project addresses this by building an end-to-end system:
+natural language requirements and test cases are translated into a formal
+representation, the translations undergo thorough validation, and finally
+a gap analysis identifies missing coverage between the formalized
+requirements and test cases. This report focuses on the first stage:
+automating the translation using large language models (LLMs). Other
+parts of the project (the formal representation itself, the semantic
+validation of translations, and the gap analysis) are being developed
+in parallel by other team members.
+
+Rather than relying on a single LLM prompt, we design an agentic pipeline
+of several steps, where each step produces inspectable, validated output,
+a property essential in safety contexts where traceability of failures is
+required. The pipeline takes a natural language requirement as input and
+produces a formal predicate tree conforming to a formalism developed
+within the project.
+
+We begin by surveying existing approaches to requirement formalization
+and the technologies available for building LLM pipelines in this context
+(Section~\ref{sec:sota}). Drawing inspiration from these, we draft our
+own approach to the translation problem, describe the pipeline
+architecture and the design decisions behind it, and present initial
+experiments comparing four orchestration frameworks on real avionics
+requirements (Section~\ref{sec:approach}). Based on the findings, we
+outline concrete directions for future development as the project
+continues (Section~\ref{sec:future}).
+
+
+% =============================================================================
+\section{State of the Art}
+\label{sec:sota}
+% =============================================================================
+
+Translating natural language requirements into formal representations has
+traditionally been a manual process requiring domain expertise. Recent
+advances in large language models have opened the possibility of
+automating this translation, and a growing body of work explores
+different strategies, from fine-tuning and prompt engineering to
+constrained decoding and pipelines composed of multiple LLM calls. We
+first survey these approaches and the methodological patterns they share
+(Section~\ref{sec:sota-formalization}), then briefly review the concrete
+tooling available for building such pipelines
+(Section~\ref{sec:sota-tech}).
+
+% -----------------------------------------------
+\subsection{LLM-Based Requirement Formalization}
+\label{sec:sota-formalization}
+
+A recent systematic literature review by Beg
+et al.~\cite{beg2025survey} identifies 35~studies on using large
+language models to formalize natural language requirements, published
+between 2022 and mid-2025. The review organizes the literature along
+several dimensions (target formalism, prompting strategy, degree of
+automation, and evaluation methodology) and classifies prompting
+strategies into zero-shot, few-shot, chain-of-thought,
+iterative/human-in-the-loop, and fine-tuning categories. We structure
+the following discussion around the main technical approaches that have
+emerged, progressing from fine-tuning to interactive methods, constrained
+decoding, and pipelines with multiple stages.
+
+\paragraph{Fine-tuning.}
+Hahn et al.~\cite{hahn2022formal} show that pre-trained language models
+can be fine-tuned on parallel corpora of natural language sentences and
+their formal equivalents, achieving competitive translation accuracy. A
+key finding for our purposes is that fine-tuned models generalize to
+unseen variable names, a property that rule-based and grammar-based
+approaches lack. Their experiments target first-order logic (FOL),
+linear-time temporal logic (LTL), and regular expressions. The main
+limitation is the data requirement: fine-tuning needs a sufficiently
+large dataset of natural language sentences paired with their correct
+formal translations, which is expensive to construct for specialized
+domains such as avionics where no such dataset exists.
+
+\paragraph{Interactive decomposition and dynamic prompting.}
+Two techniques that avoid the data cost of fine-tuning are interactive
+sub-translation and dynamic few-shot prompting (where a small number of
+solved examples are included in the prompt to guide the model). Cosler
+et al.~\cite{cosler2023nl2spec} propose decomposing the formalization
+into sub-translations: the LLM maps fragments of the input to
+sub-formulas, which serve as a structured intermediate representation
+that users can inspect, edit, and correct before the final formula is
+assembled. This decomposition makes the model's reasoning transparent at
+each step, and the interactive loop lets users resolve ambiguities that
+single-pass approaches cannot reliably detect. The framework, called
+\textit{nl2spec}, targets LTL and similar temporal logics. Xu
+et al.~\cite{xu2024nl2ltl} take the prompting strategy further with
+dynamic prompt generation: instead of using a fixed set of few-shot
+examples, the system retrieves the most relevant examples from a prompt
+library via embedding similarity for each input, and evolves the library
+over time by incorporating corrected translations. This achieves up to
+94.4\% accuracy without human interaction. With interactive prompt
+evolution, accuracy on an out-of-domain dataset improves from 27\% to
+78\%. Their target formalism is also LTL. Both approaches demonstrate
+that careful prompt selection and human-in-the-loop refinement can
+compensate for a model's limited domain knowledge without requiring
+fine-tuning, and that inspectable intermediate outputs are valuable for
+catching errors early.
+
+\paragraph{Constrained decoding.}
+Rather than validating or retrying after generation, Grammar-Forced
+Translation (GraFT) by English et al.~\cite{english2025graft} constrains
+the language model's token generation at each step so that only tokens
+permitted by the target grammar can be produced. This provides a formal
+guarantee that every generated formula is syntactically valid, eliminating
+the need for structural retries entirely. The technique involves two
+steps transferable to other formalisms: first, a masked language model
+lifts atomic propositions from the natural language input (replacing
+domain terms with integer placeholders), then a fine-tuned
+sequence-to-sequence model generates the formula under grammar
+constraints. In their evaluation on temporal logic benchmarks, this
+improves end-to-end accuracy by 5.49\% and out-of-distribution accuracy
+by 14.06\% over prior methods.
+
+\paragraph{Multi-LLM and agentic pipelines.}
+Several recent works split the formalization task into a sequence of LLM
+calls, each responsible for one part of the problem and producing its own
+structured output. Yan et al.~\cite{yan2025assertllm} demonstrate a
+three-phase architecture: the first LLM converts unstructured text into a
+structured description using a unified template, the second generates
+formal output from these descriptions, and the third validates the
+results. The template intermediate representation between phases ensures
+consistency and enables validation before proceeding to the next stage.
+Although their application domain is hardware verification assertions,
+the architectural pattern of extracting structured descriptions via
+templates, then generating and validating formal output, is directly
+applicable. Nouri et al.~\cite{nouri2024safety} apply a similar
+decomposition strategy in the automotive safety domain: they break the
+analysis into smaller tasks with dedicated prompts for each, where each
+step's output feeds the next without modification. Their key finding is
+that this decomposition with a dedicated prompt for each step
+significantly outperforms a single monolithic prompt, an observation
+confirmed across multiple expert evaluation cycles. Together, these works
+establish that task decomposition, structured intermediate representations
+between stages, and validation at each stage are effective and
+transferable strategies for complex formalization tasks.
+
+% -----------------------------------------------
+\subsection{Technologies}
+\label{sec:sota-tech}
+
+Building this kind of pipeline requires concrete choices about how the
+steps are orchestrated and how the LLM is accessed. Several open-source
+frameworks have emerged for this purpose. PydanticAI provides the most
+direct integration with Pydantic output schemas, with automatic retry on
+validation failure built in. Haystack models pipelines as directed
+acyclic graphs of typed components, with native support for serialization
+to YAML. LangGraph represents pipelines as state graphs with conditional
+edges and supports cycles, which naturally accommodates loops that retry
+on validation failure. CrewAI takes a role-based approach, defining
+agents with goals and backstories that collaborate on tasks. Other
+notable frameworks include DSPy, which optimizes prompts
+programmatically, and Instructor, which wraps function-calling APIs with
+Pydantic validation. The choice of framework determines how easily the
+pipeline can be inspected at intermediate steps, how schema changes
+propagate, and how validation errors are surfaced, all of which directly
+affect auditability. The LLM itself can be accessed either through cloud
+APIs (such as Claude or GPT-4) or by running open-weight models locally
+using tools like Ollama. Most orchestration frameworks support both
+options, allowing the same pipeline to switch between them with minimal
+code changes.
+
+% -----------------------------------------------
+\subsection*{Summary}
+
+The surveyed literature shows that LLMs can translate natural language
+requirements into formal representations with increasing accuracy, and
+that the most effective approaches share several methodological patterns:
+task decomposition into smaller, individually verifiable steps; structured
+intermediate representations between stages; and feedback-driven
+refinement, whether through human interaction, dynamic prompt evolution,
+or automated retry on validation failure. On the correctness-guarantee
+spectrum, strategies range from post-hoc validation with
+retry~\cite{cosler2023nl2spec,xu2024nl2ltl}, through extraction guided
+by templates~\cite{yan2025assertllm}, to compile-time guarantees via
+grammar-forced decoding~\cite{english2025graft}. The existing work
+targets either generic temporal logics (LTL, STL) or assertion languages
+specific to hardware verification and automotive safety. The formalism
+targeted in our project, a predicate representation developed
+specifically for avionics that can be mapped to LTL and similar temporal
+logics, makes the LTL-focused literature directly informative, but the
+specific combination of avionics domain, predicate output formalism, and
+a pipeline architecture with validation at each stage remains
+unaddressed. Our work targets this gap.
+
+
+% =============================================================================
+\section{Our Approach}
+\label{sec:approach}
+% =============================================================================
+
+% -----------------------------------------------
+\subsection{Goal and Research Questions}
+\label{sec:goal}
+% TODO:
+% - Our goal: automate NLR -> formalism translation using an LLM pipeline
+% - How it differs from existing work:
+%   - Targets a specific avionics predicate formalism (not generic LTL)
+%   - Agentic (multi-step with validation), not single-prompt
+%   - Designed for auditability (DO-178C traceability)
+%   - Open design question: fully automated vs human-in-the-loop review
+%     (nl2spec and Xu show human review helps; client may require it)
+%   - Open design question: local vs cloud models
+%     (local avoids data-sharing concerns; cloud offers stronger capability)
+%
+% Research questions:
+% - RQ1: Can an agentic LLM pipeline produce structurally valid formalizations
+%   of avionics requirements?
+% - RQ2: Which orchestration framework best fits this use case?
+% - RQ3: What is the quality gap between local and cloud models?
+% - RQ4: Where are the bottlenecks — model, framework, or schema?
+
+% -----------------------------------------------
+\subsection{Inspiration and Design Decisions}
+\label{sec:inspiration}
+% TODO:
+% - Inspiration from the pipeline diagram (Figma) — full vision
+% - What we scoped for this semester: the translation stage prototype
+% - Why agentic: LLMs perform better on small tasks, DO-178C needs step traceability
+% - Schema design evolution: flat trigger/guard/effect -> recursive predicate tree
+%   (moved to recursive to faithfully match the formalism)
+% - Prompt engineering: identity+goal separation, placeholder examples,
+%   simplification guidance, unique naming
+
+% -----------------------------------------------
+\subsection{Pipeline Architecture}
+\label{sec:architecture}
+% TODO:
+% - Pipeline diagram (Figure)
+% - Step 1: Ambiguity Review — flags issues, does not rewrite
+% - Step 2: Entity Extraction — entities as 4-tuples (name, type, modifiers, description)
+% - Step 3: Requirement Formalization — recursive predicate tree
+% - Step 4: Validation — rule-based, entity refs + operation-type compatibility
+% - Retry loop: validation failure feeds errors back to step 3
+% - Two retry levels: structural (automatic) and semantic (manual loop)
+
+% -----------------------------------------------
+\subsection{Experiments}
+\label{sec:experiments}
+% TODO:
+% Methodology:
+% - 48 runs: 4 frameworks x 4 requirements x 3 runs each
+% - Requirements 2, 3, 6, 8 (varying complexity)
+% - Metrics: success rate, time, structural failures, formula depth, Exists/ForAll usage
+%
+% Results table:
+% - Success rate: PydanticAI 92%, Haystack 92%, LangGraph 75%, CrewAI 92%
+% - Avg time: CrewAI 25.5s, LangGraph 50.5s, PydanticAI 65.0s, Haystack 65.6s
+% - Formula depth: CrewAI deepest (avg nesting 6), others 4-5
+%
+% Investigation — why CrewAI outperformed:
+% - HTTP request interception
+% - response_format: None vs json_object
+% - PydanticAI's extra schema injection message
+% - Removing json_object didn't reliably reproduce advantage
+% - Cause not fully isolated
+%
+% Model comparison — qwen2.5 vs qwen3:
+% - qwen3 thinking mode: slower, not reliably better
+% - Thinking mode identified real schema limitations
+% - With prompt guidance, best formula on hardest requirement (req 9)
+% - Thinking tokens only visible via native Ollama API
+%
+% Framework ranking:
+% 1. CrewAI — best results, unexplained advantage, heavy dependencies
+% 2. PydanticAI — least code, best schema propagation, predictable
+% 3. LangGraph — elegant graph model, worst reliability
+% 4. Haystack — DAG-only, not suited for retry loops
+
+
+% =============================================================================
+\section{Future Work}
+\label{sec:future}
+% =============================================================================
+% Critical — the project continues. Write so that future-me can pick up where I left off.
+%
+% TODO: Cover all of the following as a continuous section (no subsections).
+%
+% Pipeline improvements:
+% - Deeper semantic validation: operator validity, time variable consistency,
+%   argument count/type checking, modifiers validation
+% - Entity extraction: unique naming enforcement, typing consistency,
+%   validate before passing to formula step
+% - Ambiguity review: only flag, never rewrite (rewriting introduced errors)
+% - Schema gaps: Constant.value is float-only, no arithmetic expressions
+%
+% Verification and batch processing:
+% - Roundtrip verification via cosine similarity (from pipeline diagram)
+% - Operational guardrails generation
+% - Entity deduplication across requirements
+% - Gap analysis: formalized requirements vs formalized test cases
+% - Coverage metrics
+%
+% Tool integration:
+% - Syntax checker, domain glossary, requirements database
+% - PydanticAI has strongest tool support
+%
+% Model and deployment:
+% - Cloud model testing (Claude, GPT-4) to establish quality ceiling
+% - Local vs cloud tradeoff for safety-critical environments
+% - Fine-tuning on domain-specific data
+% - Production: latency, cost, auditability
+% - Schema evolution as formalism matures
+% - Extended evaluation: all 10 requirements, human evaluation,
+%   comparison with manual formalization
+%
+% Alternative output representations:
+% - Investigate translating to C++ code instead of/alongside the predicate formalism
+%   — LLMs are heavily trained on code and may produce more reliable output
+%   in a programming language than in a custom formal notation
+% - Could serve as an intermediate representation or as a verification target
+
+
+% =============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+% =============================================================================
+
+% [Summary]
+% TODO: What we set out to do — investigate LLM pipelines for NLR formalization.
+% What we did — surveyed state of the art, designed a pipeline, prototyped in
+% four frameworks, ran 48 comparison tests, investigated model differences.
+
+% [Key findings]
+% TODO:
+% - The pipeline architecture works for simple-to-medium requirements
+% - Model capability is the bottleneck, not the framework
+% - CrewAI and PydanticAI continue as candidates
+% - Local 14B model is viable for development, insufficient for complex requirements
+% - Prompt engineering significantly affects output quality
+
+% [What this enables]
+% TODO: This work establishes the foundation — pipeline architecture, schemas,
+% prompts, and empirical data — for building a production requirement
+% formalization system in a DO-178C context.
+
+% [Next semester]
+% TODO: Priorities:
+% - Deeper validation (operators, time variables, arguments)
+% - Roundtrip verification
+% - Tool integration (syntax checker, glossary, requirements DB)
+% - Cloud model evaluation
+% - Scale to full requirement set with human evaluation

@@ -21,3 +21,15 @@ CLAUDE.md
 
 # Environment variables
 .env
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+texput.log
+papers

@@ -1,0 +1,55 @@
+\documentclass{PPFIT} % English
+
+\hypersetup{
+	pdftitle={LLM-Based Translation Pipeline for Functional Coverage Analysis},
+	pdfauthor={Pavel Lukl},
+	pdfkeywords={DO-178C, LLM, requirement formalization, agentic pipeline, functional coverage}
+}
+
+\PPFinalCopy
+
+\PPYear{2025/2026}
+
+\PaperTitle{LLM-Based Translation Pipeline for Functional Coverage Analysis}
+
+\Authors{Pavel Lukl*}
+\affiliation{*%
+  \href{mailto:xluklp00@stud.fit.vut.cz}{xluklp00@stud.fit.vut.cz},
+  \textit{Faculty of Information Technology, Brno University of Technology}}
+
+\Keywords{DO-178C --- LLM --- requirement formalization --- agentic pipeline --- functional coverage}
+
+%\Supplementary{}
+
+\Abstract{
+PLACEHOLDER
+% What is the problem?
+Safety-critical avionics software under DO-178C requires formal coverage analysis of requirements, but requirements are written in natural language. Manual formalization is slow, error-prone, and does not scale.
+%
+% How is it solved?
+This report investigates the use of large language models (LLMs) in a multi-step agentic pipeline to automatically translate natural-language requirements into a formal predicate-based representation. We survey existing approaches to requirement formalization, evaluate four LLM orchestration frameworks, and prototype a pipeline with ambiguity review, entity extraction, formula generation, and structural validation.
+%
+% What are the results?
+We implemented and compared PydanticAI, Haystack, LangGraph, and CrewAI on a set of real avionics requirements using a locally-run 14B parameter model. CrewAI produced the deepest formulas and fastest execution, while PydanticAI offered the least code complexity and best schema evolution support. The model capability, not the framework, was the primary bottleneck for complex requirements.
+%
+% So what?
+The pipeline architecture is viable for automating requirement formalization. This work establishes the foundation for a production system and identifies concrete next steps: deeper semantic validation, verification via roundtrip checking, tool integration, and evaluation with stronger models.
+}
+
+\Teaser{
+%	\TeaserImage{placeholder.pdf}
+}
+
+\begin{document}
+\startdocument
+
+\input{2019-PPFIT-LLMPipeline-text-en.tex}
+
+\phantomsection
+\ifenglish
+    \bibliographystyle{bib-styles/enplain}
+\fi
+
+\bibliography{2019-PPFIT-LLMPipeline-bib}
+
+\end{document}
