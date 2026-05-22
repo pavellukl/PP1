@@ -71,48 +71,31 @@ automation, and evaluation methodology) and classifies prompting
 strategies into zero-shot, few-shot, chain-of-thought,
 iterative/human-in-the-loop, and fine-tuning categories. We structure
 the following discussion around the main technical approaches that have
-emerged, progressing from fine-tuning to interactive methods, constrained
-decoding, and pipelines with multiple stages.
-
-\paragraph{Fine-tuning.}
-Hahn et al.~\cite{hahn2022formal} show that pre-trained language models
-can be fine-tuned on parallel corpora of natural language sentences and
-their formal equivalents, achieving competitive translation accuracy. A
-key finding for our purposes is that fine-tuned models generalize to
-unseen variable names, a property that rule-based and grammar-based
-approaches lack. Their experiments target first-order logic (FOL),
-linear-time temporal logic (LTL), and regular expressions. The main
-limitation is the data requirement: fine-tuning needs a sufficiently
-large dataset of natural language sentences paired with their correct
-formal translations, which is expensive to construct for specialized
-domains such as avionics where no such dataset exists.
+emerged.
 
 \paragraph{Interactive decomposition and dynamic prompting.}
-Two techniques that avoid the data cost of fine-tuning are interactive
-sub-translation and dynamic few-shot prompting (where a small number of
-solved examples are included in the prompt to guide the model). Cosler
-et al.~\cite{cosler2023nl2spec} propose decomposing the formalization
-into sub-translations: the LLM maps fragments of the input to
-sub-formulas, which serve as a structured intermediate representation
+Cosler et al.~\cite{cosler2023nl2spec} propose decomposing the
+formalization into sub-translations: the LLM maps fragments of the input
+to sub-formulas, which serve as a structured intermediate representation
 that users can inspect, edit, and correct before the final formula is
 assembled. This decomposition makes the model's reasoning transparent at
 each step, and the interactive loop lets users resolve ambiguities that
 single-pass approaches cannot reliably detect. The framework, called
 \textit{nl2spec}, targets LTL and similar temporal logics. Xu
 et al.~\cite{xu2024nl2ltl} take the prompting strategy further with
-dynamic prompt generation: instead of using a fixed set of few-shot
-examples, the system retrieves the most relevant examples from a prompt
+dynamic few-shot prompting (where a small number of solved examples are
+included in the prompt to guide the model): instead of using a fixed set
+of examples, the system retrieves the most relevant ones from a prompt
 library via embedding similarity for each input, and evolves the library
 over time by incorporating corrected translations. This achieves up to
 94.4\% accuracy without human interaction. With interactive prompt
 evolution, accuracy on an out-of-domain dataset improves from 27\% to
-78\%. Their target formalism is also LTL. Both approaches demonstrate
-that careful prompt selection and human-in-the-loop refinement can
-compensate for a model's limited domain knowledge without requiring
-fine-tuning, and that inspectable intermediate outputs are valuable for
+78\%. Both approaches demonstrate that careful prompt selection and
+human-in-the-loop refinement can compensate for a model's limited domain
+knowledge, and that inspectable intermediate outputs are valuable for
 catching errors early.
 
-\paragraph{Constrained decoding.}
+\paragraph{Constrained decoding and output representation.}
 Rather than validating or retrying after generation, Grammar-Forced
 Translation (GraFT) by English et al.~\cite{english2025graft} constrains
 the language model's token generation at each step so that only tokens
@@ -127,28 +110,68 @@ constraints. In their evaluation on temporal logic benchmarks, this
 improves end-to-end accuracy by 5.49\% and out-of-distribution accuracy
 by 14.06\% over prior methods.
 
-\paragraph{Multi-LLM and agentic pipelines.}
-Several recent works split the formalization task into a sequence of LLM
-calls, each responsible for one part of the problem and producing its own
-structured output. Yan et al.~\cite{yan2025assertllm} demonstrate a
-three-phase architecture: the first LLM converts unstructured text into a
-structured description using a unified template, the second generates
-formal output from these descriptions, and the third validates the
-results. The template intermediate representation between phases ensures
-consistency and enables validation before proceeding to the next stage.
-Although their application domain is hardware verification assertions,
-the architectural pattern of extracting structured descriptions via
-templates, then generating and validating formal output, is directly
-applicable. Nouri et al.~\cite{nouri2024safety} apply a similar
-decomposition strategy in the automotive safety domain: they break the
-analysis into smaller tasks with dedicated prompts for each, where each
-step's output feeds the next without modification. Their key finding is
-that this decomposition with a dedicated prompt for each step
-significantly outperforms a single monolithic prompt, an observation
-confirmed across multiple expert evaluation cycles. Together, these works
-establish that task decomposition, structured intermediate representations
-between stages, and validation at each stage are effective and
-transferable strategies for complex formalization tasks.
+Danso et al.~\cite{danso2026syntax} provide further evidence that output
+representation matters. In a systematic evaluation of several LLMs on
+NL-to-LTL translation, they compare three prompt formats with increasing
+structural constraint: minimal (no grammar information), detailed (full
+BNF grammar, semantic definitions, and examples), and a Python interface
+where each temporal operator is a Python dataclass constructor that
+enforces valid argument structure. Reformulating the task as Python code
+generation improves semantic equivalence from approximately 24\% to over
+70\%, and raises syntactic correctness to near 100\%. The authors
+attribute the improvement to two factors: LLMs have far more Python
+training data than LTL notation, and the dataclass constructors
+physically prevent certain classes of malformed output.
+
+Critically, the paper shows that the dominant source of error is not
+syntax but semantics. While models produce syntactically valid formulas
+most of the time, they frequently get the \textit{meaning} wrong.
+The most common errors are: confusion between the ``always'' (G) and
+``eventually'' (F) operators, incorrect nesting of temporal scopes
+(placing an operator at the wrong level of the formula tree), and
+over- or under-specification where the generated formula is strictly
+stronger or weaker than intended. Atomic proposition extraction is
+relatively reliable (57.2\% overlap), but operator agreement drops to
+36.7\% and exact structural alignment to 18.7\%. These semantic errors
+are invisible to structural validation and can only be detected through
+formal equivalence checking, which the authors perform using the NuSMV
+model checker as an external oracle.
+
+\paragraph{Fine-tuning.}
+Fine-tuning language models on datasets of natural language sentences
+paired with their formal translations~\cite{hahn2022formal} can achieve
+competitive accuracy, but requires a large training dataset that does not
+exist for specialized domains such as avionics.
+
+\paragraph{Structured decomposition and agentic pipelines.}
+Several recent works separate semantic reasoning from formal output
+generation, using structured intermediate representations to bridge the
+two. Ma et al.~\cite{ma2025req2ltl} propose REQ2LTL, where the LLM
+performs semantic reasoning about the requirement and produces output in a
+hierarchical intermediate representation called OnionL, a tree of scopes,
+relations, and atomic propositions. A deterministic rule-based engine then
+validates this tree and translates it to LTL. The LLM is called with a
+single prompt containing the grammar of the intermediate language, a
+step-by-step decomposition algorithm as chain-of-thought instructions,
+several ground-truth examples of requirement-to-tree translations, and the
+requirement itself. This achieves 100\% syntactic correctness and 88.4\%
+semantic accuracy on 112 real aerospace requirements, significantly
+outperforming other approaches. The framework also supports optional human
+validation via automatically generated visual tree diagrams. An ablation
+study confirms that removing either the intermediate representation or
+the chain-of-thought decomposition degrades accuracy by over 20
+percentage points. Yan et al.~\cite{yan2025assertllm} apply a similar
+separation in hardware verification: the first LLM converts unstructured
+text into structured descriptions using a unified template, the second
+generates assertions from these descriptions, and the third validates the
+results. Nouri et al.~\cite{nouri2024safety} use the same principle in
+the automotive safety domain, breaking the analysis into smaller tasks
+with a dedicated prompt for each, where each step's output feeds the next
+without modification. Their key finding is that this decomposition
+significantly outperforms a single monolithic prompt. Together, these
+works establish that separating semantic extraction from formal
+translation, with validated intermediate representations between stages,
+is an effective strategy for complex formalization tasks.
 
 % -----------------------------------------------
 \subsection{Technologies}
@@ -184,19 +207,22 @@ that the most effective approaches share several methodological patterns:
 task decomposition into smaller, individually verifiable steps; structured
 intermediate representations between stages; and feedback-driven
 refinement, whether through human interaction, dynamic prompt evolution,
-or automated retry on validation failure. On the correctness-guarantee
-spectrum, strategies range from post-hoc validation with
-retry~\cite{cosler2023nl2spec,xu2024nl2ltl}, through extraction guided
-by templates~\cite{yan2025assertllm}, to compile-time guarantees via
-grammar-forced decoding~\cite{english2025graft}. The existing work
-targets either generic temporal logics (LTL, STL) or assertion languages
-specific to hardware verification and automotive safety. The formalism
-targeted in our project, a predicate representation developed
-specifically for avionics that can be mapped to LTL and similar temporal
-logics, makes the LTL-focused literature directly informative, but the
-specific combination of avionics domain, predicate output formalism, and
-a pipeline architecture with validation at each stage remains
-unaddressed. Our work targets this gap.
+or automated retry on validation failure. The choice of output
+representation also matters significantly: expressing formal output as
+Python code rather than custom notation can nearly triple semantic
+accuracy~\cite{danso2026syntax}. A recurring finding across multiple
+studies is that syntactic correctness is largely solved, while the real
+challenge lies in semantic correctness, particularly mis-scoped temporal
+operators and incorrect nesting~\cite{danso2026syntax,ma2025req2ltl}.
+The closest existing work is REQ2LTL~\cite{ma2025req2ltl}, which targets
+aerospace requirements and uses a hierarchical intermediate
+representation conceptually similar to our formalism. However, their
+output is standard LTL and their translation step is a fixed rule-based
+engine, whereas our formalism is domain-specific and still evolving,
+requiring the translation step itself to use LLM generation with schema
+validation. Our work builds on the same principles demonstrated by
+REQ2LTL and the other surveyed approaches, applied to this different
+setting.
 
 
 % =============================================================================
