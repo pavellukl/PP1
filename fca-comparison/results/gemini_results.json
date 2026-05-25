@@ -1,0 +1,30 @@
+[
+  {
+    "model": "gemini-2.5-flash",
+    "req": "09",
+    "flavour": "Continuous",
+    "num_entities": 12,
+    "json_success": true,
+    "json_time": 34.1,
+    "json_attempts": 1,
+    "json_constraint_type": "CausesWithin",
+    "python_success": true,
+    "python_time": 39.5,
+    "python_attempts": 2,
+    "python_constraint_type": "CausesWithin"
+  },
+  {
+    "model": "gemini-2.5-flash",
+    "req": "06",
+    "flavour": "Continuous",
+    "num_entities": 6,
+    "json_success": true,
+    "json_time": 3.9,
+    "json_attempts": 1,
+    "json_constraint_type": "CausesWithin",
+    "python_success": true,
+    "python_time": 4.2,
+    "python_attempts": 1,
+    "python_constraint_type": "CausesWithin"
+  }
+]

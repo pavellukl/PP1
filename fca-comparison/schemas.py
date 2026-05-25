@@ -5,47 +5,73 @@ from enum import Enum
 from typing import Annotated, Literal, Union
 
 
-# === Entity Types (Definition 6) ===
+# === Entity Types (Definition 8) ===
 
 class EntityType(str, Enum):
-    SIGNAL = "SIGNAL"
-    STORAGE = "STORAGE"
-    EVENT = "EVENT"
-    CHANNEL = "CHANNEL"
-    STATE = "STATE"
-    VALUE = "VALUE"
-    ABSTRACT = "ABSTRACT"
+    SIGNAL = "Signal"
+    STORAGE = "Storage"
+    EVENT = "Event"
+    EVENT_TRIGGER = "EventTrigger"
+    CHANNEL = "Channel"
+    STATE = "State"
+    VALUE = "Value"
+    ABSTRACT = "Abstract"
+    SET = "Set"
+
+
+class EventTypeLabel(str, Enum):
+    GENERIC = "generic"
+    CALCULATED = "calculated"
+    WRITTEN = "written"
+    READ = "read"
+    ENTERED = "entered"
+    TRANSMITTED = "transmitted"
+    RECEIVED = "received"
+    INSERTED = "inserted"
+    REMOVED = "removed"
+    CLEARED = "cleared"
 
 
 class OperationType(str, Enum):
     CALCULATE = "calculate"
+    WRITE = "write"
     READ = "read"
-    STORE = "store"
     FIRE = "fire"
+    SET_STATE = "set_state"
     TRANSMIT = "transmit"
     RECEIVE = "receive"
-    SET_STATE = "set_state"
-    COMPARE = "compare"
+    INSERT = "insert"
+    REMOVE = "remove"
+    CLEAR = "clear"
 
 
 VALID_OPERATIONS: dict[EntityType, set[OperationType]] = {
     EntityType.SIGNAL: {OperationType.CALCULATE},
-    EntityType.STORAGE: {OperationType.READ, OperationType.STORE},
-    EntityType.EVENT: {OperationType.FIRE},
+    EntityType.STORAGE: {OperationType.WRITE, OperationType.READ},
+    EntityType.EVENT: set(),
+    EntityType.EVENT_TRIGGER: {OperationType.FIRE},
     EntityType.CHANNEL: {OperationType.TRANSMIT, OperationType.RECEIVE},
     EntityType.STATE: {OperationType.SET_STATE},
     EntityType.VALUE: set(),
-    EntityType.ABSTRACT: {OperationType.COMPARE},
+    EntityType.ABSTRACT: set(),
+    EntityType.SET: {OperationType.INSERT, OperationType.REMOVE, OperationType.CLEAR},
 }
 
 
-# === Entities (Definition 10) ===
+# === Modifier (Definition 10) ===
+
+class Modifier(BaseModel):
+    key: str = Field(description="Modifier key, e.g. 'address', 'target', 'type', 'register', 'non_volatile'")
+    value: str | float | bool | None = Field(None, description="Modifier value. None for flag modifiers (presence alone carries meaning)")
+
+
+# === Entity (Definition 11) ===
 
 class Entity(BaseModel):
-    name: str = Field(description="Snake_case identifier, e.g. 'power_up', 'tasks_running'")
+    name: str = Field(description="Unique identifier, e.g. 'power_up', 'ev_power_up', 'DTSCON'")
     type: EntityType
-    modifiers: list[str] = Field(default_factory=list, description="Optional modifier properties for this entity, usually empty")
-    description: str = Field(description="One-sentence description of what this entity represents in the requirement")
+    modifiers: list[Modifier] = Field(default_factory=list)
+    description: str = Field(description="What this entity represents in the requirement")
 
 
 class EntityExtractionResult(BaseModel):
@@ -55,122 +81,349 @@ class EntityExtractionResult(BaseModel):
 # === Ambiguity Review ===
 
 class AmbiguityNote(BaseModel):
-    category: str = Field(description="Category from the checklist, e.g. 'Temporal ambiguity', 'Scope of negation', 'Missing causes'")
+    category: str = Field(description="E.g. 'Temporal ambiguity', 'Scope of negation', 'Missing causes'")
     text: str = Field(description="Brief description of the ambiguity found")
-    severity: Literal["low", "medium", "high"] = Field(description="How problematic this ambiguity is")
+    severity: Literal["low", "medium", "high"]
 
 
 class AmbiguityReviewResult(BaseModel):
     notes: list[AmbiguityNote] = Field(default_factory=list)
 
 
-# === Expressions (§4.1) ===
+# === Flavour (time model) ===
+
+class FlavourResult(BaseModel):
+    flavour: Literal["Discrete", "Continuous"]
+
+
+# === Expressions (§5.1) ===
 
 class Constant(BaseModel):
     expr_type: Literal["Constant"] = "Constant"
-    value: float
-    unit: str | None = Field(None, description="Time or measurement unit, e.g. 's', 'ms', 'ns'")
+    value: float | bool | str
+    unit: str | None = Field(None, description="E.g. 's', 'ms', 'ns'")
 
 
-class EntityVal(BaseModel):
-    """Val_ρ(e, t) — value of entity e at time t (Definition 23)"""
-    expr_type: Literal["EntityVal"] = "EntityVal"
-    entity: str = Field(description="Entity name from the extraction step")
-    time_var: str = Field(description="Time variable, e.g. 't', 't_prime'")
+class ArithOp(BaseModel):
+    expr_type: Literal["ArithOp"] = "ArithOp"
+    operator: Literal["+", "-", "*", "/"]
+    left: Expression
+    right: Expression
+
+
+class Negate(BaseModel):
+    expr_type: Literal["Negate"] = "Negate"
+    operand: Expression
+
+
+class Now(BaseModel):
+    expr_type: Literal["Now"] = "Now"
+
+
+class Prev(BaseModel):
+    expr_type: Literal["Prev"] = "Prev"
+    time: Expression
+
+
+class Next(BaseModel):
+    expr_type: Literal["Next"] = "Next"
+    time: Expression
+
+
+class RelTime(BaseModel):
+    expr_type: Literal["RelTime"] = "RelTime"
+    time: Expression
+    offset: int
 
 
 class Diff(BaseModel):
-    """Diff(t1, t2) = |t1 - t2| — absolute duration between two time points"""
     expr_type: Literal["Diff"] = "Diff"
-    t1: str = Field(description="First time variable, e.g. 't'")
-    t2: str = Field(description="Second time variable, e.g. 't_prime'")
+    t1: Expression
+    t2: Expression
+
+
+class MkInterval(BaseModel):
+    expr_type: Literal["MkInterval"] = "MkInterval"
+    t1: Expression
+    t2: Expression
+    left_open: bool = False
+    right_open: bool = False
+
+
+class SinceZero(BaseModel):
+    expr_type: Literal["SinceZero"] = "SinceZero"
+    time: Expression
+
+
+class Start(BaseModel):
+    expr_type: Literal["Start"] = "Start"
+    interval: Expression
+
+
+class End(BaseModel):
+    expr_type: Literal["End"] = "End"
+    interval: Expression
+
+
+class Duration(BaseModel):
+    expr_type: Literal["Duration"] = "Duration"
+    interval: Expression
+
+
+class Addr(BaseModel):
+    expr_type: Literal["Addr"] = "Addr"
+    entity: str
+
+
+class Val(BaseModel):
+    expr_type: Literal["Val"] = "Val"
+    entity: str
+    time: Expression
+
+
+class ValBefore(BaseModel):
+    expr_type: Literal["ValBefore"] = "ValBefore"
+    entity: str
+    time: Expression
+
+
+class EvtOccCount(BaseModel):
+    expr_type: Literal["EvtOccCount"] = "EvtOccCount"
+    entity: str
+    interval: Expression
+
+
+class LastOcc(BaseModel):
+    expr_type: Literal["LastOcc"] = "LastOcc"
+    entity: str
+    time: Expression
+    n: int = 1
+
+
+class FirstOcc(BaseModel):
+    expr_type: Literal["FirstOcc"] = "FirstOcc"
+    entity: str
+    time: Expression
+    n: int = 1
+
+
+class MaxVal(BaseModel):
+    expr_type: Literal["MaxVal"] = "MaxVal"
+    entity: str
+    interval: Expression
+
+
+class MinVal(BaseModel):
+    expr_type: Literal["MinVal"] = "MinVal"
+    entity: str
+    interval: Expression
+
+
+class Size(BaseModel):
+    expr_type: Literal["Size"] = "Size"
+    set_expr: Expression
+
+
+class Filter(BaseModel):
+    expr_type: Literal["Filter"] = "Filter"
+    set_expr: Expression
+    variable: str
+    predicate: Predicate
 
 
 Expression = Annotated[
-    Union[Constant, EntityVal, Diff],
+    Union[
+        Constant, ArithOp, Negate, Now, Prev, Next, RelTime, Diff,
+        MkInterval, SinceZero, Start, End, Duration,
+        Addr, Val, ValBefore, EvtOccCount, LastOcc, FirstOcc, MaxVal, MinVal,
+        Size, Filter,
+    ],
     Field(discriminator="expr_type"),
 ]
 
 
-# === Predicates (§4.2) ===
+# === Predicates (§5.2) ===
 
 class Cmp(BaseModel):
-    """Cmp(a, op, b) — compare two expressions"""
     pred_type: Literal["Cmp"] = "Cmp"
     left: Expression
-    operator: str = Field(description="One of: =, !=, <, <=, >, >=")
+    operator: Literal["=", "!=", "<", "<=", ">", ">="]
     right: Expression
 
 
 class Not(BaseModel):
-    """Not(P) — logical negation"""
     pred_type: Literal["Not"] = "Not"
     predicate: Predicate
 
 
 class AllOf(BaseModel):
-    """AllOf — all predicates must be true (logical AND)"""
     pred_type: Literal["AllOf"] = "AllOf"
     predicates: list[Predicate] = Field(min_length=1)
 
 
 class AnyOf(BaseModel):
-    """AnyOf — at least one predicate must be true (logical OR)"""
     pred_type: Literal["AnyOf"] = "AnyOf"
     predicates: list[Predicate] = Field(min_length=1)
 
 
 class Implies(BaseModel):
-    """Implies(A, B) — if A then B"""
     pred_type: Literal["Implies"] = "Implies"
     antecedent: Predicate
     consequent: Predicate
 
 
 class ForAll(BaseModel):
-    """ForAll — the predicate must hold for all values of the variable"""
     pred_type: Literal["ForAll"] = "ForAll"
+    set_expr: Expression
     variable: str
     predicate: Predicate
 
 
 class Exists(BaseModel):
-    """Exists — there must be some value of the variable for which the predicate holds"""
     pred_type: Literal["Exists"] = "Exists"
+    set_expr: Expression
     variable: str
     predicate: Predicate
 
 
-# === Operations (§5) — each produces a predicate ===
+class Happening(BaseModel):
+    pred_type: Literal["Happening"] = "Happening"
+    entity: str
+    time: Expression
+
+
+class HasHappened(BaseModel):
+    pred_type: Literal["HasHappened"] = "HasHappened"
+    entity: str
+    time: Expression
+
+
+class IntervalIncludes(BaseModel):
+    pred_type: Literal["IntervalIncludes"] = "IntervalIncludes"
+    outer: Expression
+    inner: Expression
+
+
+class IntervalExcludes(BaseModel):
+    pred_type: Literal["IntervalExcludes"] = "IntervalExcludes"
+    i1: Expression
+    i2: Expression
+
+
+# === Operations (§6) ===
 
 class Operation(BaseModel):
-    """An operation on an entity at a time point (e.g. fire, set_state, calculate)"""
     pred_type: Literal["Operation"] = "Operation"
     operation: OperationType
-    entity: str = Field(description="Entity name from the extraction step")
-    time_var: str = Field(description="Time variable, e.g. 't', 't_prime'")
-    args: list[str] = Field(default_factory=list, description="Extra arguments if needed, e.g. address for read/store, value for transmit/receive")
+    entity: str
+    args: list[Expression] = Field(default_factory=list, description="Additional arguments: expr for calculate/write/set_state/transmit, destination entity for read/receive, value for insert/remove")
 
 
 Predicate = Annotated[
-    Union[Cmp, Not, AllOf, AnyOf, Implies, ForAll, Exists, Operation],
+    Union[
+        Cmp, Not, AllOf, AnyOf, Implies, ForAll, Exists,
+        Happening, HasHappened, IntervalIncludes, IntervalExcludes,
+        Operation,
+    ],
     Field(discriminator="pred_type"),
 ]
 
 # Rebuild models to resolve forward references
-for cls in [Not, AllOf, AnyOf, Implies, ForAll, Exists, Cmp]:
+for cls in [Not, AllOf, AnyOf, Implies, ForAll, Exists, Cmp,
+            ArithOp, Negate, Filter, MkInterval, SinceZero,
+            Start, End, Duration, Prev, Next, Diff, RelTime,
+            Val, ValBefore, EvtOccCount, LastOcc, FirstOcc, MaxVal, MinVal,
+            Size, IntervalIncludes, IntervalExcludes]:
     cls.model_rebuild()
 
 
-# === Step 2 output ===
+# === Temporal Constructs (Definition 56) ===
 
-class RequirementFormula(BaseModel):
-    """The formalized requirement as a predicate tree."""
-    time_type: Literal["discrete", "continuous"] = Field(description="'discrete' for step-based timing, 'continuous' for real-valued time")
-    formula: Predicate
+class Always(BaseModel):
+    construct_type: Literal["Always"] = "Always"
+    predicate: Predicate
 
 
-# === Step 3 output ===
+class Eventually(BaseModel):
+    construct_type: Literal["Eventually"] = "Eventually"
+    predicate: Predicate
+
+
+class Initial(BaseModel):
+    construct_type: Literal["Initial"] = "Initial"
+    predicate: Predicate
+
+
+class Causes(BaseModel):
+    construct_type: Literal["Causes"] = "Causes"
+    condition: Predicate
+    effect: Predicate
+
+
+class CausesWithin(BaseModel):
+    construct_type: Literal["CausesWithin"] = "CausesWithin"
+    condition: Predicate
+    effect: Predicate
+    duration: float
+    duration_unit: str = Field(default="s", description="Time unit, e.g. 's', 'ms', 'ns'")
+
+
+class Sequence(BaseModel):
+    construct_type: Literal["Sequence"] = "Sequence"
+    steps: list[Predicate] = Field(min_length=2)
+
+
+class Precedes(BaseModel):
+    construct_type: Literal["Precedes"] = "Precedes"
+    before: Predicate
+    after: Predicate
+
+
+class Excludes(BaseModel):
+    construct_type: Literal["Excludes"] = "Excludes"
+    p1: Predicate
+    p2: Predicate
+
+
+class Immediately(BaseModel):
+    construct_type: Literal["Immediately"] = "Immediately"
+    trigger: Predicate
+    effect: Predicate
+
+
+TemporalConstruct = Annotated[
+    Union[Always, Eventually, Initial, Causes, CausesWithin, Sequence, Precedes, Excludes, Immediately],
+    Field(discriminator="construct_type"),
+]
+
+
+# === Composed trace predicates ===
+
+class TraceAllOf(BaseModel):
+    construct_type: Literal["TraceAllOf"] = "TraceAllOf"
+    constructs: list[TemporalConstruct] = Field(min_length=1)
+
+
+class TraceAnyOf(BaseModel):
+    construct_type: Literal["TraceAnyOf"] = "TraceAnyOf"
+    constructs: list[TemporalConstruct] = Field(min_length=1)
+
+
+Constraint = Annotated[
+    Union[Always, Eventually, Initial, Causes, CausesWithin, Sequence, Precedes, Excludes, Immediately, TraceAllOf, TraceAnyOf],
+    Field(discriminator="construct_type"),
+]
+
+
+# === Requirement (Definition 57) ===
+
+class Requirement(BaseModel):
+    flavour: Literal["Discrete", "Continuous"]
+    entities: list[Entity] = Field(min_length=1)
+    constraint: Constraint
+
+
+# === Validation ===
 
 class ValidationResult(BaseModel):
     valid: bool

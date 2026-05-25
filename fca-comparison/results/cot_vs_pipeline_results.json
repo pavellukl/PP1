@@ -1,0 +1,475 @@
+[
+  {
+    "model": "gemini-3.5-flash",
+    "req": "06",
+    "pipeline_success": true,
+    "pipeline_time": 30.1,
+    "pipeline_calls": 3,
+    "pipeline_constraint_type": "CausesWithin",
+    "pipeline_num_entities": 4,
+    "pipeline_error": null,
+    "pipeline_constraint": {
+      "construct_type": "CausesWithin",
+      "condition": {
+        "pred_type": "Happening",
+        "entity": "ev_processor_power_up",
+        "time": {
+          "expr_type": "Now"
+        }
+      },
+      "effect": {
+        "pred_type": "Happening",
+        "entity": "ev_start_task_execution",
+        "time": {
+          "expr_type": "Now"
+        }
+      },
+      "duration": 2.0,
+      "duration_unit": "s"
+    },
+    "cot_success": true,
+    "cot_time": 28.2,
+    "cot_calls": 1,
+    "cot_constraint_type": "CausesWithin",
+    "cot_num_entities": 4,
+    "cot_error": null,
+    "cot_constraint": {
+      "construct_type": "CausesWithin",
+      "condition": {
+        "pred_type": "Happening",
+        "entity": "ev_power_up",
+        "time": {
+          "expr_type": "Now"
+        }
+      },
+      "effect": {
+        "pred_type": "Happening",
+        "entity": "ev_invoke_task_seq",
+        "time": {
+          "expr_type": "Now"
+        }
+      },
+      "duration": 2.0,
+      "duration_unit": "s"
+    }
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "req": "02",
+    "pipeline_success": true,
+    "pipeline_time": 43.6,
+    "pipeline_calls": 3,
+    "pipeline_constraint_type": "Eventually",
+    "pipeline_num_entities": 5,
+    "pipeline_error": null,
+    "pipeline_constraint": {
+      "construct_type": "Eventually",
+      "predicate": {
+        "pred_type": "AllOf",
+        "predicates": [
+          {
+            "pred_type": "Happening",
+            "entity": "ev_store_measurement",
+            "time": {
+              "expr_type": "Now"
+            }
+          },
+          {
+            "pred_type": "Cmp",
+            "left": {
+              "expr_type": "Val",
+              "entity": "nvm_measurement_block",
+              "time": {
+                "expr_type": "Now"
+              }
+            },
+            "operator": "=",
+            "right": {
+              "expr_type": "Val",
+              "entity": "max_execution_time_data",
+              "time": {
+                "expr_type": "Now"
+              }
+            }
+          },
+          {
+            "pred_type": "Cmp",
+            "left": {
+              "expr_type": "Addr",
+              "entity": "nvm_measurement_block"
+            },
+            "operator": "=",
+            "right": {
+              "expr_type": "Val",
+              "entity": "measuremt_block_addr",
+              "time": {
+                "expr_type": "Now"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "cot_success": true,
+    "cot_time": 24.4,
+    "cot_calls": 1,
+    "cot_constraint_type": "Always",
+    "cot_num_entities": 2,
+    "cot_error": null,
+    "cot_constraint": {
+      "construct_type": "Always",
+      "predicate": {
+        "pred_type": "Cmp",
+        "left": {
+          "expr_type": "Val",
+          "entity": "nvm_measuremt_block",
+          "time": {
+            "expr_type": "Now"
+          }
+        },
+        "operator": "=",
+        "right": {
+          "expr_type": "Val",
+          "entity": "max_execution_time_data",
+          "time": {
+            "expr_type": "Now"
+          }
+        }
+      }
+    }
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "req": "03",
+    "pipeline_success": true,
+    "pipeline_time": 51.5,
+    "pipeline_calls": 3,
+    "pipeline_constraint_type": "Sequence",
+    "pipeline_num_entities": 6,
+    "pipeline_error": null,
+    "pipeline_constraint": {
+      "construct_type": "Sequence",
+      "steps": [
+        {
+          "pred_type": "Happening",
+          "entity": "ev_read_calibration",
+          "time": {
+            "expr_type": "Now"
+          }
+        },
+        {
+          "pred_type": "AllOf",
+          "predicates": [
+            {
+              "pred_type": "Happening",
+              "entity": "ev_write_dtscon",
+              "time": {
+                "expr_type": "Now"
+              }
+            },
+            {
+              "pred_type": "Cmp",
+              "left": {
+                "expr_type": "Val",
+                "entity": "dtscon_register",
+                "time": {
+                  "expr_type": "Now"
+                }
+              },
+              "operator": "=",
+              "right": {
+                "expr_type": "Val",
+                "entity": "calibration_constant_val",
+                "time": {
+                  "expr_type": "Now"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "cot_success": true,
+    "cot_time": 34.6,
+    "cot_calls": 1,
+    "cot_constraint_type": "Sequence",
+    "cot_num_entities": 4,
+    "cot_error": null,
+    "cot_constraint": {
+      "construct_type": "Sequence",
+      "steps": [
+        {
+          "pred_type": "Happening",
+          "entity": "ev_read_cal",
+          "time": {
+            "expr_type": "Now"
+          }
+        },
+        {
+          "pred_type": "AllOf",
+          "predicates": [
+            {
+              "pred_type": "Happening",
+              "entity": "ev_write_dtscon",
+              "time": {
+                "expr_type": "Now"
+              }
+            },
+            {
+              "pred_type": "Cmp",
+              "left": {
+                "expr_type": "Val",
+                "entity": "dtscon_register",
+                "time": {
+                  "expr_type": "Now"
+                }
+              },
+              "operator": "=",
+              "right": {
+                "expr_type": "Val",
+                "entity": "cal_const_mem",
+                "time": {
+                  "expr_type": "Start",
+                  "interval": {
+                    "expr_type": "LastOcc",
+                    "entity": "ev_read_cal",
+                    "time": {
+                      "expr_type": "Now"
+                    },
+                    "n": 1
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "model": "gemini-3.5-flash",
+    "req": "09",
+    "pipeline_success": true,
+    "pipeline_time": 47.4,
+    "pipeline_calls": 3,
+    "pipeline_constraint_type": "CausesWithin",
+    "pipeline_num_entities": 12,
+    "pipeline_error": null,
+    "pipeline_constraint": {
+      "construct_type": "CausesWithin",
+      "condition": {
+        "pred_type": "AllOf",
+        "predicates": [
+          {
+            "pred_type": "Happening",
+            "entity": "ev_write_d",
+            "time": {
+              "expr_type": "Now"
+            }
+          },
+          {
+            "pred_type": "Cmp",
+            "left": {
+              "expr_type": "ArithOp",
+              "operator": "-",
+              "left": {
+                "expr_type": "Val",
+                "entity": "max_peak",
+                "time": {
+                  "expr_type": "Now"
+                }
+              },
+              "right": {
+                "expr_type": "Val",
+                "entity": "min_peak",
+                "time": {
+                  "expr_type": "Now"
+                }
+              }
+            },
+            "operator": ">",
+            "right": {
+              "expr_type": "Constant",
+              "value": 655.0,
+              "unit": null
+            }
+          },
+          {
+            "pred_type": "Cmp",
+            "left": {
+              "expr_type": "EvtOccCount",
+              "entity": "ev_write_d",
+              "interval": {
+                "expr_type": "LastOcc",
+                "entity": "ev_min_peak_detection",
+                "time": {
+                  "expr_type": "Now"
+                },
+                "n": 1
+              }
+            },
+            "operator": "=",
+            "right": {
+              "expr_type": "Constant",
+              "value": 2.0,
+              "unit": null
+            }
+          },
+          {
+            "pred_type": "Cmp",
+            "left": {
+              "expr_type": "Val",
+              "entity": "d",
+              "time": {
+                "expr_type": "Now"
+              }
+            },
+            "operator": ">",
+            "right": {
+              "expr_type": "ValBefore",
+              "entity": "d",
+              "time": {
+                "expr_type": "Now"
+              }
+            }
+          }
+        ]
+      },
+      "effect": {
+        "pred_type": "Happening",
+        "entity": "ev_toggle_valid_range",
+        "time": {
+          "expr_type": "Now"
+        }
+      },
+      "duration": 500.0,
+      "duration_unit": "ns"
+    },
+    "cot_success": true,
+    "cot_time": 34.3,
+    "cot_calls": 1,
+    "cot_constraint_type": "CausesWithin",
+    "cot_num_entities": 7,
+    "cot_error": null,
+    "cot_constraint": {
+      "construct_type": "CausesWithin",
+      "condition": {
+        "pred_type": "AllOf",
+        "predicates": [
+          {
+            "pred_type": "Happening",
+            "entity": "ev_write_d",
+            "time": {
+              "expr_type": "Now"
+            }
+          },
+          {
+            "pred_type": "Cmp",
+            "left": {
+              "expr_type": "ArithOp",
+              "operator": "-",
+              "left": {
+                "expr_type": "Val",
+                "entity": "max_peak",
+                "time": {
+                  "expr_type": "Now"
+                }
+              },
+              "right": {
+                "expr_type": "Val",
+                "entity": "min_peak",
+                "time": {
+                  "expr_type": "Now"
+                }
+              }
+            },
+            "operator": ">",
+            "right": {
+              "expr_type": "Constant",
+              "value": 655.0,
+              "unit": null
+            }
+          },
+          {
+            "pred_type": "Cmp",
+            "left": {
+              "expr_type": "EvtOccCount",
+              "entity": "ev_write_d",
+              "interval": {
+                "expr_type": "MkInterval",
+                "t1": {
+                  "expr_type": "Start",
+                  "interval": {
+                    "expr_type": "LastOcc",
+                    "entity": "ev_min_peak_detect",
+                    "time": {
+                      "expr_type": "Now"
+                    },
+                    "n": 1
+                  }
+                },
+                "t2": {
+                  "expr_type": "Now"
+                },
+                "left_open": false,
+                "right_open": false
+              }
+            },
+            "operator": "=",
+            "right": {
+              "expr_type": "Constant",
+              "value": 2.0,
+              "unit": null
+            }
+          },
+          {
+            "pred_type": "Cmp",
+            "left": {
+              "expr_type": "Val",
+              "entity": "d",
+              "time": {
+                "expr_type": "Now"
+              }
+            },
+            "operator": ">",
+            "right": {
+              "expr_type": "ValBefore",
+              "entity": "d",
+              "time": {
+                "expr_type": "Now"
+              }
+            }
+          }
+        ]
+      },
+      "effect": {
+        "pred_type": "Cmp",
+        "left": {
+          "expr_type": "Val",
+          "entity": "valid_range",
+          "time": {
+            "expr_type": "Now"
+          }
+        },
+        "operator": "!=",
+        "right": {
+          "expr_type": "ValBefore",
+          "entity": "valid_range",
+          "time": {
+            "expr_type": "Start",
+            "interval": {
+              "expr_type": "LastOcc",
+              "entity": "ev_write_d",
+              "time": {
+                "expr_type": "Now"
+              },
+              "n": 1
+            }
+          }
+        }
+      },
+      "duration": 500.0,
+      "duration_unit": "ns"
+    }
+  }
+]

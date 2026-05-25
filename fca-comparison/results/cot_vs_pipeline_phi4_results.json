@@ -1,0 +1,54 @@
+[
+  {
+    "model": "phi4:latest",
+    "req": "02",
+    "run": 1,
+    "pipeline_success": true,
+    "pipeline_time": 27.0,
+    "pipeline_constraint_type": "Eventually",
+    "pipeline_error": null,
+    "cot_success": true,
+    "cot_time": 22.5,
+    "cot_constraint_type": "Always",
+    "cot_error": null
+  },
+  {
+    "model": "phi4:latest",
+    "req": "03",
+    "run": 1,
+    "pipeline_success": true,
+    "pipeline_time": 31.3,
+    "pipeline_constraint_type": "Sequence",
+    "pipeline_error": null,
+    "cot_success": false,
+    "cot_time": 36.4,
+    "cot_constraint_type": null,
+    "cot_error": "ValidationError: 2 validation errors for Requirement\nconstraint.Sequence.steps.1\n  Unable to extract tag using discriminator 'pred_type' [type=union_tag_not_found, input_value={'operation': 'read', 'en...ration_constant_value']}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.12/v/u"
+  },
+  {
+    "model": "phi4:latest",
+    "req": "06",
+    "run": 1,
+    "pipeline_success": true,
+    "pipeline_time": 26.9,
+    "pipeline_constraint_type": "CausesWithin",
+    "pipeline_error": null,
+    "cot_success": true,
+    "cot_time": 21.0,
+    "cot_constraint_type": "CausesWithin",
+    "cot_error": null
+  },
+  {
+    "model": "phi4:latest",
+    "req": "09",
+    "run": 1,
+    "pipeline_success": false,
+    "pipeline_time": 61.9,
+    "pipeline_constraint_type": null,
+    "pipeline_error": "Constraint failed (2 attempts): ValidationError: 2 validation errors for Requirement\nconstraint.CausesWithin.condition.AllOf.predicates.0.Implies.consequent.AllOf.predicates.1.Implies.consequent.Cmp.left\n  Input tag 'SignExtend' found using 'expr_type' does not match any of the expected tags: 'Constant', 'ArithOp', 'Negate', 'Now', 'Prev', 'Next',",
+    "cot_success": false,
+    "cot_time": 52.7,
+    "cot_constraint_type": null,
+    "cot_error": "ValidationError: 2 validation errors for Requirement\nconstraint.CausesWithin.condition.AllOf.predicates.2.Cmp.left.Size.set_expr.Filter.set_expr\n  Input should be a valid dictionary or object to extract fields from [type=model_attributes_type, input_value='write_count_after_min_peak', input_type=str]\n    For further"
+  }
+]

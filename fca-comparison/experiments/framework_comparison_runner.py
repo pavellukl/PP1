@@ -1,3 +1,5 @@
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import subprocess
 import sys
 import time
@@ -27,7 +29,7 @@ for req_num in REQUIREMENTS:
             print(f"  {label}")
             print(f"{'='*60}")
 
-            main_py = Path(__file__).parent / framework / "main.py"
+            main_py = Path(__file__).parent.parent / "frameworks" / framework / "main.py"
             start = time.time()
 
             try:
@@ -173,7 +175,7 @@ for req in REQUIREMENTS:
         print(f"  {fw:15s}: {successes}/{len(fw_req)} success, avg {avg_time:.1f}s")
 
 # Save raw results
-output_path = Path(__file__).parent / "comparison_results.json"
+output_path = Path(__file__).parent.parent / "results" / "comparison_results.json"
 with open(output_path, "w") as f:
     json.dump(results, f, indent=2)
 print(f"\nRaw results saved to {output_path}")
