@@ -51,27 +51,40 @@ Translating natural language requirements into formal representations has
 traditionally been a manual process requiring domain expertise. Recent
 advances in large language models have opened the possibility of
 automating this translation, and a growing body of work explores
-different strategies, from fine-tuning and prompt engineering to
-constrained decoding and pipelines composed of multiple LLM calls. We
-first survey these approaches and the methodological patterns they share
-(Section~\ref{sec:sota-formalization}), then briefly review the concrete
-tooling available for building such pipelines
-(Section~\ref{sec:sota-tech}).
+different strategies. A recent systematic literature review by Beg
+et al.~\cite{beg2025survey} identifies 35~studies on the topic published
+between 2022 and mid-2025. We survey the relevant approaches below,
+organized into four areas: requirement quality and pre-processing
+(Section~\ref{sec:sota-quality}), formalization approaches
+(Section~\ref{sec:sota-formalization}), output representation and
+correctness (Section~\ref{sec:sota-output}), and implementation
+technologies (Section~\ref{sec:sota-tech}).
 
 % -----------------------------------------------
-\subsection{LLM-Based Requirement Formalization}
-\label{sec:sota-formalization}
+\subsection{Requirement Quality and Pre-processing}
+\label{sec:sota-quality}
 
-A recent systematic literature review by Beg
-et al.~\cite{beg2025survey} identifies 35~studies on using large
-language models to formalize natural language requirements, published
-between 2022 and mid-2025. The review organizes the literature along
-several dimensions (target formalism, prompting strategy, degree of
-automation, and evaluation methodology) and classifies prompting
-strategies into zero-shot, few-shot, chain-of-thought,
-iterative/human-in-the-loop, and fine-tuning categories. We structure
-the following discussion around the main technical approaches that have
-emerged.
+Before a requirement can be formalized, it must be sufficiently
+unambiguous and complete. Template-based tools such as
+FRET~\cite{giannakopoulou2020fret} achieve precise formalization by
+having users write requirements in a restricted natural language with
+unambiguous semantics, but require every requirement to be manually
+rewritten to conform to the template grammar. NLP-based defect detection
+offers an alternative: pattern-based approaches have been applied to
+identify ambiguities and inconsistencies in requirements in safety-critical
+domains such as railway~\cite{ferrari2018detecting}. More recently, Mahbub
+et al.~\cite{mahbub2024gpt4ambiguity} evaluated GPT-4 for automated
+detection of ambiguities, inconsistencies, and incompleteness in
+industrial requirements, finding that while LLMs show promise for early
+defect screening (precision 0.61 for incompleteness), they are less
+reliable for ambiguity detection (precision 0.39) and cannot replace
+human analysts. These findings suggest that LLM-based ambiguity review is
+useful as a pre-processing step that flags potential issues for human
+review, but should not autonomously rewrite requirements.
+
+% -----------------------------------------------
+\subsection{Formalization Approaches}
+\label{sec:sota-formalization}
 
 \paragraph{Interactive decomposition and dynamic prompting.}
 Cosler et al.~\cite{cosler2023nl2spec} propose decomposing the
@@ -95,59 +108,15 @@ human-in-the-loop refinement can compensate for a model's limited domain
 knowledge, and that inspectable intermediate outputs are valuable for
 catching errors early.
 
-\paragraph{Constrained decoding and output representation.}
-Rather than validating or retrying after generation, Grammar-Forced
-Translation (GraFT) by English et al.~\cite{english2025graft} constrains
-the language model's token generation at each step so that only tokens
-permitted by the target grammar can be produced. This provides a formal
-guarantee that every generated formula is syntactically valid, eliminating
-the need for structural retries entirely. The technique involves two
-steps transferable to other formalisms: first, a masked language model
-lifts atomic propositions from the natural language input (replacing
-domain terms with integer placeholders), then a fine-tuned
-sequence-to-sequence model generates the formula under grammar
-constraints. In their evaluation on temporal logic benchmarks, this
-improves end-to-end accuracy by 5.49\% and out-of-distribution accuracy
-by 14.06\% over prior methods.
-
-Danso et al.~\cite{danso2026syntax} provide further evidence that output
-representation matters. In a systematic evaluation of several LLMs on
-NL-to-LTL translation, they compare three prompt formats with increasing
-structural constraint: minimal (no grammar information), detailed (full
-BNF grammar, semantic definitions, and examples), and a Python interface
-where each temporal operator is a Python dataclass constructor that
-enforces valid argument structure. Reformulating the task as Python code
-generation improves semantic equivalence from approximately 24\% to over
-70\%, and raises syntactic correctness to near 100\%. The authors
-attribute the improvement to two factors: LLMs have far more Python
-training data than LTL notation, and the dataclass constructors
-physically prevent certain classes of malformed output.
-
-Critically, the paper shows that the dominant source of error is not
-syntax but semantics. While models produce syntactically valid formulas
-most of the time, they frequently get the \textit{meaning} wrong.
-The most common errors are: confusion between the ``always'' (G) and
-``eventually'' (F) operators, incorrect nesting of temporal scopes
-(placing an operator at the wrong level of the formula tree), and
-over- or under-specification where the generated formula is strictly
-stronger or weaker than intended. Atomic proposition extraction is
-relatively reliable (57.2\% overlap), but operator agreement drops to
-36.7\% and exact structural alignment to 18.7\%. These semantic errors
-are invisible to structural validation and can only be detected through
-formal equivalence checking, which the authors perform using the NuSMV
-model checker as an external oracle.
-
-\paragraph{Fine-tuning.}
-Fine-tuning language models on datasets of natural language sentences
-paired with their formal translations~\cite{hahn2022formal} can achieve
-competitive accuracy, but requires a large training dataset that does not
-exist for specialized domains such as avionics.
-
 \paragraph{Structured decomposition and agentic pipelines.}
-Several recent works separate semantic reasoning from formal output
-generation, using structured intermediate representations to bridge the
-two. Ma et al.~\cite{ma2025req2ltl} propose REQ2LTL, where the LLM
-performs semantic reasoning about the requirement and produces output in a
+Khot et al.~\cite{khot2022decomposed} show that decomposing complex tasks
+into sub-tasks delegated to specialized prompts outperforms single-pass
+chain-of-thought, since each prompt can be independently optimized for its
+sub-task. Several recent works apply this principle to requirement
+formalization, separating semantic reasoning from formal output generation
+using structured intermediate representations.
+Ma et al.~\cite{ma2025req2ltl} propose REQ2LTL, where the LLM performs
+semantic reasoning about the requirement and produces output in a
 hierarchical intermediate representation called OnionL, a tree of scopes,
 relations, and atomic propositions. A deterministic rule-based engine then
 validates this tree and translates it to LTL. The LLM is called with a
@@ -173,30 +142,101 @@ works establish that separating semantic extraction from formal
 translation, with validated intermediate representations between stages,
 is an effective strategy for complex formalization tasks.
 
+\paragraph{Fine-tuning.}
+Fine-tuning language models on datasets of natural language sentences
+paired with their formal translations~\cite{hahn2022formal} can achieve
+competitive accuracy, but requires a large training dataset that does not
+exist for specialized domains such as avionics.
+
+% -----------------------------------------------
+\subsection{Output Representation and Correctness}
+\label{sec:sota-output}
+
+A recurring challenge across all formalization approaches is ensuring
+that the generated output is not only structurally valid but also
+semantically correct. This subsection surveys strategies for improving
+output correctness, from constraining the generation process to choosing
+the right output format.
+
+\paragraph{Constrained decoding.}
+Grammar-Forced Translation (GraFT) by English
+et al.~\cite{english2025graft} constrains the language model's token
+generation at each step so that only tokens permitted by the target
+grammar can be produced. This provides a formal guarantee that every
+generated formula is syntactically valid, eliminating the need for
+structural retries entirely. The technique involves two steps
+transferable to other formalisms: first, a masked language model lifts
+atomic propositions from the natural language input (replacing domain
+terms with integer placeholders), then a fine-tuned sequence-to-sequence
+model generates the formula under grammar constraints. In their
+evaluation on temporal logic benchmarks, this improves end-to-end
+accuracy by 5.49\% and out-of-distribution accuracy by 14.06\% over
+prior methods.
+
+\paragraph{Code as output representation.}
+The idea of using code rather than custom notation as the output format
+has broader support. Gao et al.~\cite{gao2022pal} show that having LLMs
+generate Python programs instead of reasoning directly, then executing
+the code, outperforms chain-of-thought on mathematical and symbolic
+reasoning tasks by offloading the solution step to an interpreter.
+Danso et al.~\cite{danso2026syntax} provide evidence specific to
+formalization: in a systematic evaluation of several LLMs on NL-to-LTL
+translation, they compare three prompt formats with increasing structural
+constraint (minimal, detailed grammar, and a Python interface where each
+temporal operator is a Python dataclass constructor). Reformulating the
+task as Python code generation improves semantic equivalence from
+approximately 24\% to over 70\%, and raises syntactic correctness to
+near 100\%. The improvement is attributed to two factors: LLMs have far
+more Python training data than LTL notation, and the dataclass
+constructors physically prevent certain classes of malformed output.
+
+\paragraph{The syntax--semantics gap.}
+Critically, Danso et al.\ show that the dominant source of error is not
+syntax but semantics. While models produce syntactically valid formulas
+most of the time, they frequently get the \textit{meaning} wrong. The
+most common errors are: confusion between the ``always'' (G) and
+``eventually'' (F) operators, incorrect nesting of temporal scopes
+(placing an operator at the wrong level of the formula tree), and over-
+or under-specification where the generated formula is strictly stronger
+or weaker than intended. Atomic proposition extraction is relatively
+reliable (57.2\% overlap), but operator agreement drops to 36.7\% and
+exact structural alignment to 18.7\%. These semantic errors are invisible
+to structural validation and can only be detected through formal
+equivalence checking, which the authors perform using the NuSMV model
+checker as an external oracle. This finding is echoed by
+REQ2LTL~\cite{ma2025req2ltl}, whose ablation study shows that structured
+decomposition addresses precisely these semantic errors, improving
+accuracy by over 20 percentage points. LLM compliance with complex JSON
+schemas also degrades sharply as schema depth
+increases~\cite{geng2025jsonschemabench}, motivating either simpler
+per-step schemas or alternative output representations.
+
 % -----------------------------------------------
 \subsection{Technologies}
 \label{sec:sota-tech}
 
-Building this kind of pipeline requires concrete choices about how the
+Building a formalization pipeline requires concrete choices about how the
 steps are orchestrated and how the LLM is accessed. Several open-source
-frameworks have emerged for this purpose. PydanticAI provides the most
+frameworks have emerged for this purpose, and a recent comparison of ten
+such frameworks on the same task found significant differences in
+implementation complexity and
+reliability~\cite{ahmed2026ddl2propbank}. PydanticAI provides the most
 direct integration with Pydantic output schemas, with automatic retry on
-validation failure built in. Haystack models pipelines as directed
-acyclic graphs of typed components, with native support for serialization
-to YAML. LangGraph represents pipelines as state graphs with conditional
-edges and supports cycles, which naturally accommodates loops that retry
-on validation failure. CrewAI takes a role-based approach, defining
-agents with goals and backstories that collaborate on tasks. Other
-notable frameworks include DSPy, which optimizes prompts
-programmatically, and Instructor, which wraps function-calling APIs with
-Pydantic validation. The choice of framework determines how easily the
-pipeline can be inspected at intermediate steps, how schema changes
-propagate, and how validation errors are surfaced, all of which directly
-affect auditability. The LLM itself can be accessed either through cloud
-APIs (such as Claude or GPT-4) or by running open-weight models locally
-using tools like Ollama. Most orchestration frameworks support both
-options, allowing the same pipeline to switch between them with minimal
-code changes.
+validation failure built in. Haystack models pipelines as directed acyclic
+graphs of typed components, with native support for serialization to YAML.
+LangGraph represents pipelines as state graphs with conditional edges and
+supports cycles, which naturally accommodates loops that retry on
+validation failure. CrewAI takes a role-based approach, defining agents
+with goals and backstories that collaborate on tasks. Other notable
+frameworks include DSPy, which optimizes prompts programmatically, and
+Instructor, which wraps function-calling APIs with Pydantic validation.
+The choice of framework determines how easily the pipeline can be
+inspected at intermediate steps, how schema changes propagate, and how
+validation errors are surfaced, all of which directly affect auditability.
+The LLM itself can be accessed either through cloud APIs (such as Claude
+or GPT-4) or by running open-weight models locally using tools like
+Ollama. Most orchestration frameworks support both options, allowing the
+same pipeline to switch between them with minimal code changes.
 
 % -----------------------------------------------
 \subsection*{Summary}
@@ -205,24 +245,22 @@ The surveyed literature shows that LLMs can translate natural language
 requirements into formal representations with increasing accuracy, and
 that the most effective approaches share several methodological patterns:
 task decomposition into smaller, individually verifiable steps; structured
-intermediate representations between stages; and feedback-driven
-refinement, whether through human interaction, dynamic prompt evolution,
-or automated retry on validation failure. The choice of output
-representation also matters significantly: expressing formal output as
-Python code rather than custom notation can nearly triple semantic
-accuracy~\cite{danso2026syntax}. A recurring finding across multiple
-studies is that syntactic correctness is largely solved, while the real
-challenge lies in semantic correctness, particularly mis-scoped temporal
-operators and incorrect nesting~\cite{danso2026syntax,ma2025req2ltl}.
-The closest existing work is REQ2LTL~\cite{ma2025req2ltl}, which targets
-aerospace requirements and uses a hierarchical intermediate
-representation conceptually similar to our formalism. However, their
-output is standard LTL and their translation step is a fixed rule-based
-engine, whereas our formalism is domain-specific and still evolving,
-requiring the translation step itself to use LLM generation with schema
-validation. Our work builds on the same principles demonstrated by
-REQ2LTL and the other surveyed approaches, applied to this different
-setting.
+intermediate representations between stages; feedback-driven refinement
+through human interaction, dynamic prompt evolution, or automated retry;
+and careful choice of output representation, with Python code
+outperforming custom notation by a wide
+margin~\cite{danso2026syntax,gao2022pal}. A recurring finding is that
+syntactic correctness is largely solved, while the real challenge lies in
+semantic correctness, particularly mis-scoped temporal operators and
+incorrect nesting~\cite{danso2026syntax,ma2025req2ltl}. The closest
+existing work is REQ2LTL~\cite{ma2025req2ltl}, which targets aerospace
+requirements and uses a hierarchical intermediate representation
+conceptually similar to our formalism. However, their output is standard
+LTL and their translation step is a fixed rule-based engine, whereas our
+formalism is domain-specific and still evolving, requiring the
+translation step itself to use LLM generation with schema validation. Our
+work builds on the same principles demonstrated by REQ2LTL and the other
+surveyed approaches, applied to this different setting.
 
 
 % =============================================================================
