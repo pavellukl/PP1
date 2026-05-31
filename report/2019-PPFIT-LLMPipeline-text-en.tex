@@ -248,8 +248,8 @@ task decomposition into smaller, individually verifiable steps; structured
 intermediate representations between stages; feedback-driven refinement
 through human interaction, dynamic prompt evolution, or automated retry;
 and careful choice of output representation, with Python code
-outperforming custom notation by a wide
-margin~\cite{danso2026syntax,gao2022pal}. A recurring finding is that
+outperforming custom notation on frontier
+models~\cite{danso2026syntax,gao2022pal}. A recurring finding is that
 syntactic correctness is largely solved, while the real challenge lies in
 semantic correctness, particularly mis-scoped temporal operators and
 incorrect nesting~\cite{danso2026syntax,ma2025req2ltl}. The closest
@@ -269,82 +269,238 @@ surveyed approaches, applied to this different setting.
 % =============================================================================
 
 % -----------------------------------------------
-\subsection{Goal and Research Questions}
-\label{sec:goal}
-% TODO:
-% - Our goal: automate NLR -> formalism translation using an LLM pipeline
-% - How it differs from existing work:
-%   - Targets a specific avionics predicate formalism (not generic LTL)
-%   - Agentic (multi-step with validation), not single-prompt
-%   - Designed for auditability (DO-178C traceability)
-%   - Open design question: fully automated vs human-in-the-loop review
-%     (nl2spec and Xu show human review helps; client may require it)
-%   - Open design question: local vs cloud models
-%     (local avoids data-sharing concerns; cloud offers stronger capability)
-%
-% Research questions:
-% - RQ1: Can an agentic LLM pipeline produce structurally valid formalizations
-%   of avionics requirements?
-% - RQ2: Which orchestration framework best fits this use case?
-% - RQ3: What is the quality gap between local and cloud models?
-% - RQ4: Where are the bottlenecks — model, framework, or schema?
+\subsection{Research Questions}
+\label{sec:rqs}
+
+Based on the patterns and open questions identified in the literature, we
+investigate four research questions:
+
+\begin{itemize}
+\item \textbf{RQ1: How should the formalization task be decomposed?}
+The literature shows that both single-call chain-of-thought
+decomposition~\cite{ma2025req2ltl} and multi-call
+pipelines~\cite{nouri2024safety,khot2022decomposed} outperform monolithic
+prompts, but does not establish which is preferable for a given formalism
+and model capability level.
+
+\item \textbf{RQ2: How does output representation affect formalization
+accuracy?} Danso et al.~\cite{danso2026syntax} and Gao
+et al.~\cite{gao2022pal} report that Python code output significantly
+outperforms custom notation on frontier models. We test whether this
+finding holds for smaller local models and for our specific formalism.
+
+\item \textbf{RQ3: How does model capability affect architecture
+choices?} Cloud frontier models and local open-weight models differ
+substantially in reasoning ability. We investigate whether the optimal
+pipeline architecture depends on the model used.
+
+\item \textbf{RQ4: Which orchestration framework best fits this use
+case?} Ahmed et al.~\cite{ahmed2026ddl2propbank} show significant
+differences in framework complexity and reliability. We compare four
+frameworks on the same formalization task.
+\end{itemize}
 
 % -----------------------------------------------
-\subsection{Inspiration and Design Decisions}
-\label{sec:inspiration}
-% TODO:
-% - Inspiration from the pipeline diagram (Figma) — full vision
-% - What we scoped for this semester: the translation stage prototype
-% - Why agentic: LLMs perform better on small tasks, DO-178C needs step traceability
-% - Schema design evolution: flat trigger/guard/effect -> recursive predicate tree
-%   (moved to recursive to faithfully match the formalism)
-% - Prompt engineering: identity+goal separation, placeholder examples,
-%   simplification guidance, unique naming
+\subsection{The Formalism}
+\label{sec:formalism}
+
+The target representation is a domain-specific predicate formalism
+designed for expressing avionics software requirements and test cases in
+a form suitable for mechanical coverage analysis. We summarize the
+aspects relevant to the pipeline.
+
+A formalized requirement is a triple $R$ consisting of a
+\textit{flavour} (Discrete or Continuous, fixing the time model), a set
+of \textit{entities}, and a \textit{constraint} (a temporal construct
+expressing the required behavior). Entity types include Signal, Storage, Event, EventTrigger,
+Channel, State, Value, Abstract, and Set, each with a defined set of
+permitted operations (e.g., \texttt{fire} for EventTrigger,
+\texttt{write} for Storage). Temporal constructs such as Always,
+Eventually, Causes, CausesWithin, Sequence, and others quantify over
+time, and predicates within them reference entity values, event
+occurrences, and interval-based computations.
+
+The formalism can be mapped to LTL and similar temporal logics, which
+makes the LTL-focused literature from Section~\ref{sec:sota} directly
+informative. Our pipeline targets the formalism itself as its output,
+analogous to how REQ2LTL~\cite{ma2025req2ltl} targets OnionL as its
+intermediate representation. Once the formalism stabilizes and a mapping
+to temporal logics is defined, a deterministic rule-based translation to
+LTL could be added as a downstream step, mirroring REQ2LTL's
+architecture.
 
 % -----------------------------------------------
 \subsection{Pipeline Architecture}
 \label{sec:architecture}
-% TODO:
-% - Pipeline diagram (Figure)
-% - Step 1: Ambiguity Review — flags issues, does not rewrite
-% - Step 2: Entity Extraction — entities as 4-tuples (name, type, modifiers, description)
-% - Step 3: Requirement Formalization — recursive predicate tree
-% - Step 4: Validation — rule-based, entity refs + operation-type compatibility
-% - Retry loop: validation failure feeds errors back to step 3
-% - Two retry levels: structural (automatic) and semantic (manual loop)
+
+Following the decomposition principle established in the
+literature~\cite{khot2022decomposed,nouri2024safety}, our pipeline
+breaks the formalization into four steps, each producing inspectable,
+validated output:
+
+\begin{enumerate}
+\item \textbf{Ambiguity Review.} The LLM flags potential ambiguities in
+the requirement text against a checklist (temporal ambiguity, scope of
+negation, missing causes, vague language). Following Mahbub
+et al.'s~\cite{mahbub2024gpt4ambiguity} finding that LLMs are unreliable
+for autonomous ambiguity resolution, this step flags issues for human
+review but does not rewrite the requirement. The ambiguity notes are
+passed as context to all subsequent steps.
+
+\item \textbf{Flavour Extraction.} The LLM determines whether the
+requirement uses discrete time (step-based behavior, register operations)
+or continuous time (real-time durations, deadlines). This is a simple
+classification that sets the time model for the rest of the pipeline.
+
+\item \textbf{Entity Extraction.} The LLM identifies all entities
+referenced in the requirement, producing a structured intermediate
+representation: each entity is a tuple of (name, type, modifiers,
+description). This step serves the same architectural role as the
+intermediate representation in
+REQ2LTL~\cite{ma2025req2ltl} and
+AssertLLM~\cite{yan2025assertllm}: it separates semantic extraction
+from formal output generation and provides an inspection point where
+entity types and modifiers can be validated before the constraint is
+built.
+
+\item \textbf{Constraint Formalization.} Given the entities, flavour,
+and ambiguity notes, the LLM constructs the temporal constraint. The
+prompt includes a step-by-step decomposition algorithm (inspired by
+REQ2LTL's BUILDING-ONIONL~\cite{ma2025req2ltl}): identify the top-level
+temporal scope, decompose the condition into sub-predicates, decompose
+the effect, and normalize entity references. If structural validation
+fails, the error is fed back and the step retries automatically.
+\end{enumerate}
+
+Structural validation checks that every entity referenced in the
+constraint was declared in step~3, that operations are compatible with
+entity types, and that the output conforms to the Pydantic schema. This
+catches structural errors but not semantic ones: as Danso
+et al.~\cite{danso2026syntax} show, a formula can be structurally valid
+while meaning something entirely different from the requirement. Semantic
+validation is a separate concern outside the scope of this work.
 
 % -----------------------------------------------
-\subsection{Experiments}
+\subsection{Preliminary Experiments}
 \label{sec:experiments}
-% TODO:
-% Methodology:
-% - 48 runs: 4 frameworks x 4 requirements x 3 runs each
-% - Requirements 2, 3, 6, 8 (varying complexity)
-% - Metrics: success rate, time, structural failures, formula depth, Exists/ForAll usage
-%
-% Results table:
-% - Success rate: PydanticAI 92%, Haystack 92%, LangGraph 75%, CrewAI 92%
-% - Avg time: CrewAI 25.5s, LangGraph 50.5s, PydanticAI 65.0s, Haystack 65.6s
-% - Formula depth: CrewAI deepest (avg nesting 6), others 4-5
-%
-% Investigation — why CrewAI outperformed:
-% - HTTP request interception
-% - response_format: None vs json_object
-% - PydanticAI's extra schema injection message
-% - Removing json_object didn't reliably reproduce advantage
-% - Cause not fully isolated
-%
-% Model comparison — qwen2.5 vs qwen3:
-% - qwen3 thinking mode: slower, not reliably better
-% - Thinking mode identified real schema limitations
-% - With prompt guidance, best formula on hardest requirement (req 9)
-% - Thinking tokens only visible via native Ollama API
-%
-% Framework ranking:
-% 1. CrewAI — best results, unexplained advantage, heavy dependencies
-% 2. PydanticAI — least code, best schema propagation, predictable
-% 3. LangGraph — elegant graph model, worst reliability
-% 4. Haystack — DAG-only, not suited for retry loops
+
+We conducted four sets of preliminary experiments to inform the research
+questions. Due to the exploratory nature of this phase, sample sizes are
+small and results should be interpreted as directional findings, not
+definitive answers. Each experiment's setup (model, schema version,
+requirements tested) is noted explicitly, as these varied across
+experiments.
+
+\paragraph{RQ4: Framework comparison.}
+We implemented the pipeline in four orchestration frameworks (PydanticAI,
+Haystack, LangGraph, CrewAI) and ran 48~tests (4~frameworks $\times$
+4~requirements $\times$ 3~runs) using a locally served qwen2.5:14b model
+and an earlier, simpler version of the formalism schema. Three frameworks
+achieved 92\% structural success rate; LangGraph reached 75\%. CrewAI was
+consistently fastest (25.5s average vs 50--66s for others) and produced
+the deepest formula trees. Investigation via HTTP request interception
+revealed that CrewAI omits the \texttt{response\_format: json\_object}
+parameter that the other frameworks send, but reproducing this change in
+PydanticAI did not reliably replicate the advantage. PydanticAI required
+the least code (${\sim}$140 lines vs ${\sim}$200--220) and offered the
+best schema propagation: changing the Pydantic model automatically
+updates the LLM's schema context.
+\paragraph{RQ2: Output representation.}
+To test Danso et al.'s~\cite{danso2026syntax} finding that Python output
+improves formalization accuracy, we ran 10~requirements $\times$ 3~runs
+in both JSON and Python output modes using phi4:14b (a local model) and
+the updated formalism schema. The LLM received the same formalism context
+in both cases; only the output format instructions differed. JSON
+achieved 90\% structural success (27/30) while Python achieved 70\%
+(21/30). Python errors included inventing function names, wrong argument
+counts, and confusing API levels. JSON was also faster (17.3s vs 20.2s
+average). This contradicts Danso et al.'s finding, but their evaluation
+used frontier models (GPT-4o, Claude, Gemini). Our result suggests that
+the Python advantage is capability-dependent: it emerges when the model
+is fluent enough in Python to benefit from the structural scaffolding,
+but a smaller model makes more errors with an unfamiliar API than with
+JSON discriminators it has seen in training.
+
+\paragraph{RQ1: Task decomposition.}
+We compared two architectures: the multi-call pipeline (separate LLM
+calls for flavour, entities, and constraint with validation between
+steps) and a single-call chain-of-thought approach (one prompt containing
+a step-by-step decomposition algorithm, inspired by
+REQ2LTL~\cite{ma2025req2ltl}). Both used identical decomposition logic;
+only the execution model differed. On phi4:14b, the pipeline achieved 75\%
+success vs 50\% for CoT (4~requirements, 1~run). On Gemini~3.5 Flash (a
+cloud model), both achieved 100\% (4~requirements, 1~run). Ground truth
+comparison revealed that CoT produced better temporal precision on complex
+requirements (correctly using \texttt{LastOcc} to reference values at
+past event times), while the pipeline produced more thorough entity
+extraction. An informal test with a frontier model (Claude) on the
+hardest requirement produced the closest match to ground truth of any
+configuration, correctly capturing temporal lookups that all other setups
+missed. These results suggest that weaker models benefit from the
+pipeline's simpler per-call schemas, while stronger models benefit from
+CoT's full-context reasoning.
+
+\paragraph{RQ3: Model capability.}
+Across all experiments, model capability was the strongest predictor of
+output quality. The local phi4:14b model achieved 75--90\% structural
+success on simple to medium requirements but failed consistently on the
+most complex requirement (Req~9: multi-condition timed toggle with event
+counting and interval construction). Gemini~2.5 Flash and 3.5~Flash
+succeeded on this requirement in both pipeline and CoT modes. The
+semantic quality gap was even larger: cloud models correctly used
+advanced constructs such as event occurrence counting with open intervals
+and value lookups at past event times, which local models either
+simplified away or produced incorrectly. Reasoning-specific model
+variants were incompatible with framework-managed structured output due
+to embedded thinking tags that interfere with JSON parsing.
+
+% -----------------------------------------------
+\subsection{Discussion}
+\label{sec:discussion}
+
+The preliminary experiments confirm several findings from the literature
+and reveal one notable divergence. Task decomposition improves
+formalization quality regardless of whether it is implemented as a
+multi-call pipeline or as chain-of-thought instructions within a single
+call, confirming the core finding of Khot
+et al.~\cite{khot2022decomposed} and
+REQ2LTL~\cite{ma2025req2ltl}. The choice between the two
+architectures depends on model capability: smaller models need the
+simpler per-step schemas that a pipeline provides, while larger models
+benefit from seeing the full requirement context in a single call.
+
+The finding that JSON outperforms Python on a 14B local model (RQ2) is
+the clearest divergence from the literature. Danso
+et al.~\cite{danso2026syntax} measured semantic equivalence improvements
+of nearly threefold with Python output, but their evaluation used
+frontier models. Our result suggests that the advantage is not inherent
+to the output format but depends on the model's fluency with the
+representation: a model that has seen far more JSON schemas in training
+than custom Python APIs will perform better with JSON. This has practical
+implications for deployment in environments where cloud models are not
+available.
+
+All findings reported above are based on small sample sizes (1--3 runs
+per configuration, 4--10 requirements) and should be treated as
+preliminary observations rather than confirmed results. Confirming these
+trends requires more comprehensive testing: larger requirement sets,
+multiple runs per configuration for statistical significance, a wider
+range of models, and systematic ground-truth evaluation. The resources
+required for such testing, particularly access to frontier cloud models
+with sufficient API quotas, were not available during this phase of the
+project.
+
+Several design questions also remain open. The degree of human involvement
+(fully automated vs human-in-the-loop review, as in
+nl2spec~\cite{cosler2023nl2spec} and REQ2LTL~\cite{ma2025req2ltl})
+depends on the deployment context and the level of trust required in the
+output. Dynamic few-shot example selection (Xu
+et al.~\cite{xu2024nl2ltl}) could improve accuracy by retrieving the
+most relevant examples for each input but has not yet been tested.
+Semantic validation beyond structural checks remains the fundamental open
+problem: as Danso et al.~\cite{danso2026syntax} show, a structurally
+valid formula can be semantically incorrect, and detecting such errors
+requires formal equivalence checking or human review.
 
 
 % =============================================================================
