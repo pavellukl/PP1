@@ -1,0 +1,183 @@
+% =============================================================================
+\section{Prompts}
+\label{app:prompts}
+% =============================================================================
+
+This appendix contains the system prompts used in the pipeline
+experiments. Each prompt consists of a role/goal statement,
+step-specific instructions, and (where applicable) the shared formalism
+context. The formalism context is identical across the entity
+extraction, constraint formalization, and chain-of-thought prompts; it
+is shown once below and omitted from subsequent prompts for brevity.
+
+% -----------------------------------------------
+\subsection{Shared Formalism Context}
+\label{app:formalism-context}
+
+The following is an abbreviated version of the formalism context block
+included in the entity extraction, constraint formalization, and CoT
+prompts. The actual prompt lists each entity type with its permitted
+operations, each temporal construct with its parameter names, each
+predicate with its field structure, and each expression type with its
+arguments, along with a worked example of a complete formalization.
+
+{\footnotesize\ttfamily
+\begin{quote}
+ENTITY TYPES:
+Signal (calculate), Storage (write, read),
+EventTrigger (fire), Event (linked via modifiers),
+Channel (transmit, receive), State (set\_state),
+Value, Abstract, Set (insert, remove, clear)
+
+TEMPORAL CONSTRUCTS:
+Always, Eventually, Initial, Causes, CausesWithin,
+Sequence, Precedes, Excludes, Immediately
+
+PREDICATES:
+Cmp, AllOf, AnyOf, Implies, Not, ForAll, Exists,
+Happening, HasHappened, Operation
+
+EXPRESSIONS:
+Constant, ArithOp, Now, Prev, Next,
+Val, ValBefore, EvtOccCount, LastOcc, FirstOcc,
+MaxVal, MinVal, MkInterval, Start, End, Duration,
+Diff, Addr, Size, Filter
+
+IMPORTANT PATTERNS:
+EventTrigger + Event pairs: when an operation fires
+on an entity, corresponding Event entities (linked
+via target and type modifiers) become true.
+Time is ambient: expressions use Now() and temporal
+constructs supply the time context.
+\end{quote}
+}
+
+Additionally, the prompts include a worked example
+showing the formalization of a scheduling deadline requirement
+(CausesWithin with Happening predicates).
+
+% -----------------------------------------------
+\subsection{Ambiguity Review}
+\label{app:prompt-ambiguity}
+
+{\footnotesize\ttfamily
+\begin{quote}
+You are Ambiguity Reviewer. You are an expert in
+analyzing safety-critical avionics requirements for
+ambiguity and potential misinterpretation.
+
+Review requirements against the ambiguity checklist
+and flag genuine issues without rewriting the
+requirement.
+
+Checklist: dangling else / scope of action, ambiguity
+of reference, omissions (causes without effects,
+effects without causes), ambiguous logical operators,
+negation scope, vague verbs/adverbs/adjectives,
+built-in assumptions, ambiguous precedence, implicit
+cases, temporal ambiguity, boundary ambiguity.
+
+Do NOT rewrite or modify the requirement.
+\end{quote}
+}
+
+% -----------------------------------------------
+\subsection{Flavour Extraction}
+\label{app:prompt-flavour}
+
+{\footnotesize\ttfamily
+\begin{quote}
+You are a Time Model Classifier.
+
+Discrete: step-by-step behavior, register operations,
+state transitions, sequential actions without
+real-time durations.
+
+Continuous: real-time durations (seconds, ms, ns),
+deadlines, continuous physical quantities.
+\end{quote}
+}
+
+% -----------------------------------------------
+\subsection{Entity Extraction}
+\label{app:prompt-entity}
+
+Uses the shared formalism context
+(Appendix~\ref{app:formalism-context}), followed by:
+
+{\footnotesize\ttfamily
+\begin{quote}
+You are Entity Extractor.
+
+
+Each entity has: name (unique identifier), type,
+modifiers (key-value pairs), description.
+Every entity name must be unique.
+
+IMPORTANT: For every EventTrigger, create a
+corresponding Event entity with target and type
+modifiers. For operations that produce events, create
+corresponding Event entities if the requirement
+references those occurrences.
+\end{quote}
+}
+
+% -----------------------------------------------
+\subsection{Constraint Formalization (Pipeline)}
+\label{app:prompt-formula}
+
+Uses the shared formalism context, followed by a
+step-by-step decomposition algorithm:
+
+{\footnotesize\ttfamily
+\begin{quote}
+You are Requirement Formalizer.
+
+
+STEP 1 -- IDENTIFY TOP-LEVEL TEMPORAL SCOPE:
+Always, Eventually, Causes/CausesWithin, Sequence,
+Initial, or TraceAllOf. Separate condition from
+effect.
+
+STEP 2 -- DECOMPOSE CONDITION:
+Split into sub-predicates. Event happening?
+Value comparison? Occurrence count? Past event
+reference using LastOcc/Start?
+
+STEP 3 -- DECOMPOSE EFFECT:
+What value must the entity have? Toggle (use
+ValBefore)? Just an event firing (use Happening)?
+
+STEP 4 -- NORMALIZE:
+Entity names must match exactly. Operations must be
+compatible with entity types. Time references use
+Now(), Prev(Now()), Start(LastOcc(...)), etc.
+\end{quote}
+}
+
+% -----------------------------------------------
+\subsection{Chain-of-Thought (Single Call)}
+\label{app:prompt-cot}
+
+The CoT variant combines flavour extraction, entity extraction, and
+constraint formalization into a single prompt. It uses the same
+formalism context and adds a two-stage decomposition:
+
+{\footnotesize\ttfamily
+\begin{quote}
+STAGE 1: MACRO-STRUCTURE
+
+Step 1: Determine time model (Discrete/Continuous).
+Step 2: Identify top-level temporal scope and
+separate condition from effect.
+
+STAGE 2: RECURSIVE DECOMPOSITION
+
+Step 3: Extract all entities with types and modifiers.
+Step 4: Decompose condition into sub-predicates.
+Step 5: Decompose effect.
+Step 6: Normalize entity references and operations.
+
+Output the complete Requirement as JSON.
+\end{quote}
+}

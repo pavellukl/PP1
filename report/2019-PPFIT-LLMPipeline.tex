@@ -1,4 +1,6 @@
 \documentclass{PPFIT} % English
+\usepackage{tikz}
+\usetikzlibrary{positioning}
 
 \hypersetup{
 	pdftitle={LLM-Based Translation Pipeline for Functional Coverage Analysis},
@@ -22,18 +24,7 @@
 %\Supplementary{}
 
 \Abstract{
-PLACEHOLDER
-% What is the problem?
-Safety-critical avionics software under DO-178C requires formal coverage analysis of requirements, but requirements are written in natural language. Manual formalization is slow, error-prone, and does not scale.
-%
-% How is it solved?
-This report investigates the use of large language models (LLMs) in a multi-step agentic pipeline to automatically translate natural-language requirements into a formal predicate-based representation. We survey existing approaches to requirement formalization, evaluate four LLM orchestration frameworks, and prototype a pipeline with ambiguity review, entity extraction, formula generation, and structural validation.
-%
-% What are the results?
-We implemented and compared PydanticAI, Haystack, LangGraph, and CrewAI on a set of real avionics requirements using a locally-run 14B parameter model. CrewAI produced the deepest formulas and fastest execution, while PydanticAI offered the least code complexity and best schema evolution support. The model capability, not the framework, was the primary bottleneck for complex requirements.
-%
-% So what?
-The pipeline architecture is viable for automating requirement formalization. This work establishes the foundation for a production system and identifies concrete next steps: deeper semantic validation, verification via roundtrip checking, tool integration, and evaluation with stronger models.
+Safety-critical avionics software requires formal coverage analysis of requirements, but requirements are written in natural language. Manual formalization is slow, error-prone, and does not scale. This report investigates the use of large language models (LLMs) in a multi-step agentic pipeline to automatically translate natural-language requirements into a domain-specific predicate formalism. We survey existing approaches to requirement formalization, design a four-step pipeline (ambiguity review, flavour extraction, entity extraction, and constraint formalization with structural validation), and conduct preliminary experiments comparing orchestration frameworks, output representations (JSON vs Python), task decomposition strategies (multi-call pipeline vs single-call chain-of-thought), and local vs cloud models. Our findings show that model capability is the strongest predictor of output quality, that JSON outperforms Python on smaller local models despite the opposite being reported for frontier models in the literature, and that structured decomposition in prompts improves results regardless of architecture. These preliminary results establish a foundation for the next phase of the project, which will focus on comprehensive evaluation, human-in-the-loop review, and iterative improvement through fine-tuning.
 }
 
 \Teaser{
@@ -51,5 +42,10 @@ The pipeline architecture is viable for automating requirement formalization. Th
 \fi
 
 \bibliography{2019-PPFIT-LLMPipeline-bib}
+
+\newpage
+\onecolumn
+\appendix
+\input{2019-PPFIT-LLMPipeline-appendix-en.tex}
 
 \end{document}

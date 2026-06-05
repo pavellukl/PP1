@@ -22,7 +22,17 @@ requirements and test cases. This report focuses on the first stage:
 automating the translation using large language models (LLMs). Other
 parts of the project (the formal representation itself, the semantic
 validation of translations, and the gap analysis) are being developed
-in parallel by other team members.
+in parallel by other team members. Figure~\ref{fig:project-overview}
+shows the overall project pipeline; this report addresses the LLM-Based
+Translation stage.
+
+\begin{figure*}[ht]
+\centering
+\includegraphics[width=\textwidth]{pipeline-overview.pdf}
+\caption{Overview of the full project pipeline. This report focuses on
+the LLM-Based Translation stage (center).}
+\label{fig:project-overview}
+\end{figure*}
 
 Rather than relying on a single LLM prompt, we design an agentic pipeline
 of several steps, where each step produces inspectable, validated output,
@@ -145,8 +155,14 @@ is an effective strategy for complex formalization tasks.
 \paragraph{Fine-tuning.}
 Fine-tuning language models on datasets of natural language sentences
 paired with their formal translations~\cite{hahn2022formal} can achieve
-competitive accuracy, but requires a large training dataset that does not
-exist for specialized domains such as avionics.
+competitive accuracy. A key advantage is that fine-tuned models
+generalize to unseen variable names, a property that rule-based
+approaches lack. However, fine-tuning requires a sufficiently large
+training dataset, which does not exist for specialized domains such as
+avionics. In practice, such a dataset could be accumulated incrementally:
+a prompt-based pipeline with human-in-the-loop review produces corrected
+formalizations that serve as training pairs over time, enabling
+fine-tuning as a downstream improvement rather than a prerequisite.
 
 % -----------------------------------------------
 \subsection{Output Representation and Correctness}
@@ -320,6 +336,13 @@ Eventually, Causes, CausesWithin, Sequence, and others quantify over
 time, and predicates within them reference entity values, event
 occurrences, and interval-based computations.
 
+The formalism evolves between versions as new entity types and operations
+are added, but each individual translation run targets a fixed schema
+version. This means the pipeline does not need to handle schema changes
+at runtime; instead, the schema is updated between versions and the
+pipeline (including any fine-tuned models or rule-based components) is
+updated accordingly.
+
 The formalism can be mapped to LTL and similar temporal logics, which
 makes the LTL-focused literature from Section~\ref{sec:sota} directly
 informative. Our pipeline targets the formalism itself as its output,
@@ -333,10 +356,83 @@ architecture.
 \subsection{Pipeline Architecture}
 \label{sec:architecture}
 
+% TODO: Add repository link once professor sets it up
+
 Following the decomposition principle established in the
 literature~\cite{khot2022decomposed,nouri2024safety}, our pipeline
 breaks the formalization into four steps, each producing inspectable,
-validated output:
+validated output (Figure~\ref{fig:our-pipeline}):
+
+\begin{figure*}[ht]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=0.8cm and 1.0cm,
+  box/.style={draw, rounded corners, minimum height=0.9cm,
+    minimum width=1.8cm, align=center, font=\footnotesize},
+  io/.style={draw, rounded corners, minimum height=0.7cm,
+    minimum width=1.5cm, align=center, font=\footnotesize\itshape,
+    fill=black!5},
+  arr/.style={->, thick, >=stealth},
+  darr/.style={->, dashed, thick, >=stealth, color=black!50},
+]
+% Nodes
+\node[io] (input) {NL\\Requirement};
+\node[box, right=of input] (ambiguity) {Ambiguity\\Review};
+\node[box, right=of ambiguity] (flavour) {Flavour\\Extraction};
+\node[box, right=of flavour] (entity) {Entity\\Extraction};
+\node[box, right=of entity] (formula) {Constraint\\Formalization};
+\node[box, right=of formula] (valid) {Structural\\Validation};
+\node[io, right=of valid] (output) {Formalized\\Requirement};
+
+% Main flow
+\draw[arr] (input) -- (ambiguity);
+\draw[arr] (ambiguity) -- (flavour);
+\draw[arr] (flavour) -- (entity);
+\draw[arr] (entity) -- (formula);
+\draw[arr] (formula) -- (valid);
+\draw[arr] (valid) -- (output);
+
+% Schema retry loops (self-loops above each LLM step)
+\draw[arr, color=red!70!black]
+  ([xshift=3mm]ambiguity.north) -- ++(0,0.4) -- ++(-0.8,0) -- ++(0,-0.4)
+  node[above, pos=0.0, font=\scriptsize\color{red!70!black}] {retry};
+\draw[arr, color=red!70!black]
+  ([xshift=3mm]flavour.north) -- ++(0,0.4) -- ++(-0.8,0) -- ++(0,-0.4)
+  node[above, pos=0.0, font=\scriptsize\color{red!70!black}] {retry};
+\draw[arr, color=red!70!black]
+  ([xshift=3mm]entity.north) -- ++(0,0.4) -- ++(-0.8,0) -- ++(0,-0.4)
+  node[above, pos=0.0, font=\scriptsize\color{red!70!black}] {retry};
+\draw[arr, color=red!70!black]
+  ([xshift=3mm]formula.north) -- ++(0,0.4) -- ++(-0.8,0) -- ++(0,-0.4)
+  node[above, pos=0.0, font=\scriptsize\color{red!70!black}] {retry};
+
+% Validation retry loop (back from validation to formula)
+\draw[arr, color=red!70!black]
+  (valid.south) -- ++(0,-0.5) -| node[below, pos=0.25,
+  font=\scriptsize\color{red!70!black}] {validation retry}
+  (formula.south);
+
+% Ambiguity notes
+\draw[darr] (ambiguity.south) -- ++(0,-1.0) -|
+  node[below, pos=0.15, font=\scriptsize\color{black!50}]
+  {ambiguity notes} (flavour.south);
+\draw[darr] (ambiguity.south) -- ++(0,-1.0) -| (entity.south);
+\draw[darr] (ambiguity.south) -- ++(0,-1.0) -| (formula.south west);
+\end{tikzpicture}%
+}
+\caption{Detailed view of the LLM-Based Translation stage from
+Figure~\ref{fig:project-overview}. The Preprocessing block from the
+overview corresponds to our Ambiguity Review and Flavour Extraction
+steps; the Step and Step Validation blocks correspond to Entity
+Extraction and Constraint Formalization with their respective
+validations. Each LLM step automatically retries on schema validation
+failure (red self-loops). Structural validation additionally triggers a
+retry of the constraint formalization step (red arrow from validation).
+Ambiguity notes from the first step are passed as context to all
+subsequent steps (dashed arrows).}
+\label{fig:our-pipeline}
+\end{figure*}
 
 \begin{enumerate}
 \item \textbf{Ambiguity Review.} The LLM flags potential ambiguities in
@@ -372,6 +468,18 @@ the effect, and normalize entity references. If structural validation
 fails, the error is fed back and the step retries automatically.
 \end{enumerate}
 
+Each step uses a dedicated system prompt consisting of three parts: a
+role and goal statement, the formalism context (entity types, temporal
+constructs, predicates, and expressions with their schemas), and
+step-specific instructions with worked examples. The formalism context is
+shared across steps so that the LLM has the same reference material
+regardless of which step it is executing. The constraint formalization
+step additionally includes a decomposition algorithm as chain-of-thought
+instructions, following the pattern established by
+REQ2LTL~\cite{ma2025req2ltl}. Ambiguity notes from step~1 are appended
+to the prompts of all subsequent steps as additional context. The full
+prompts are included in Appendix~\ref{app:prompts}.
+
 Structural validation checks that every entity referenced in the
 constraint was declared in step~3, that operations are compatible with
 entity types, and that the output conforms to the Pydantic schema. This
@@ -404,7 +512,31 @@ parameter that the other frameworks send, but reproducing this change in
 PydanticAI did not reliably replicate the advantage. PydanticAI required
 the least code (${\sim}$140 lines vs ${\sim}$200--220) and offered the
 best schema propagation: changing the Pydantic model automatically
-updates the LLM's schema context.
+updates the LLM's schema context. Table~\ref{tab:frameworks}
+summarizes the results.
+
+\vspace{0.5em}
+\noindent
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\toprule
+& \textbf{PydanticAI} & \textbf{Haystack} & \textbf{LangGraph} & \textbf{CrewAI} \\
+\midrule
+Success rate & 92\% & 92\% & 75\% & 92\% \\
+Avg time (s) & 65.0 & 65.6 & 50.5 & \textbf{25.5} \\
+Avg attempts & 1.4 & 1.8 & 1.8 & \textbf{1.3} \\
+Lines of code & \textbf{${\sim}$140} & ${\sim}$205 & ${\sim}$210 & ${\sim}$220 \\
+\bottomrule
+\end{tabular*}
+\captionof{table}{Framework comparison (qwen2.5:14b, 4 requirements,
+3 runs each). Success means the output is structurally valid against
+the schema.}
+\label{tab:frameworks}
+\renewcommand{\arraystretch}{1.0}
+\normalsize
+\vspace{0.5em}
+
 \paragraph{RQ2: Output representation.}
 To test Danso et al.'s~\cite{danso2026syntax} finding that Python output
 improves formalization accuracy, we ran 10~requirements $\times$ 3~runs
@@ -420,6 +552,32 @@ the Python advantage is capability-dependent: it emerges when the model
 is fluent enough in Python to benefit from the structural scaffolding,
 but a smaller model makes more errors with an unfamiliar API than with
 JSON discriminators it has seen in training.
+Table~\ref{tab:python-json} shows the per-requirement breakdown.
+
+\vspace{0.5em}
+\noindent
+\footnotesize
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcc|lcc@{}}
+\toprule
+\textbf{Req} & \textbf{JSON} & \textbf{Python} & \textbf{Req} & \textbf{JSON} & \textbf{Python} \\
+\midrule
+01 & 1/3 & 2/3 & 06 & 3/3 & 3/3 \\
+02 & 3/3 & 3/3 & 07 & 3/3 & 3/3 \\
+03 & 3/3 & 3/3 & 08 & 3/3 & 3/3 \\
+04 & 3/3 & 2/3 & 09 & 3/3 & 0/3 \\
+05 & 3/3 & 1/3 & 10 & 2/3 & 1/3 \\
+\midrule
+\multicolumn{4}{l}{\textbf{Total}} & \textbf{27/30} & \textbf{21/30} \\
+\bottomrule
+\end{tabular*}
+\captionof{table}{Python vs JSON structural success rate (phi4:14b,
+3 runs per requirement). Success means the output validates against
+the Pydantic schema.}
+\label{tab:python-json}
+\renewcommand{\arraystretch}{1.0}
+\normalsize
+\vspace{0.5em}
 
 \paragraph{RQ1: Task decomposition.}
 We compared two architectures: the multi-call pipeline (separate LLM
@@ -438,7 +596,34 @@ hardest requirement produced the closest match to ground truth of any
 configuration, correctly capturing temporal lookups that all other setups
 missed. These results suggest that weaker models benefit from the
 pipeline's simpler per-call schemas, while stronger models benefit from
-CoT's full-context reasoning.
+CoT's full-context reasoning. Table~\ref{tab:cot-pipeline} summarizes
+the results.
+
+\vspace{0.5em}
+\noindent
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\toprule
+& \multicolumn{2}{c}{\textbf{phi4:14b}} & \multicolumn{2}{c}{\textbf{Gemini 3.5 Flash}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5}
+\textbf{Req} & Pipeline & CoT & Pipeline & CoT \\
+\midrule
+02 & \checkmark & \checkmark & \checkmark & \checkmark \\
+03 & \checkmark & $\times$ & \checkmark & \checkmark \\
+06 & \checkmark & \checkmark & \checkmark & \checkmark \\
+09 & $\times$ & $\times$ & \checkmark & \checkmark \\
+\midrule
+\textbf{Total} & \textbf{3/4} & \textbf{2/4} & \textbf{4/4} & \textbf{4/4} \\
+\bottomrule
+\end{tabular*}
+\captionof{table}{CoT vs Pipeline structural success rate
+(4 requirements, 1 run each). Checkmark indicates the output validates
+against the schema. Gemini results use the updated decomposition prompt.}
+\label{tab:cot-pipeline}
+\renewcommand{\arraystretch}{1.0}
+\normalsize
+\vspace{0.5em}
 
 \paragraph{RQ3: Model capability.}
 Across all experiments, model capability was the strongest predictor of
@@ -490,60 +675,110 @@ required for such testing, particularly access to frontier cloud models
 with sufficient API quotas, were not available during this phase of the
 project.
 
-Several design questions also remain open. The degree of human involvement
-(fully automated vs human-in-the-loop review, as in
-nl2spec~\cite{cosler2023nl2spec} and REQ2LTL~\cite{ma2025req2ltl})
-depends on the deployment context and the level of trust required in the
-output. Dynamic few-shot example selection (Xu
-et al.~\cite{xu2024nl2ltl}) could improve accuracy by retrieving the
-most relevant examples for each input but has not yet been tested.
-Semantic validation beyond structural checks remains the fundamental open
-problem: as Danso et al.~\cite{danso2026syntax} show, a structurally
-valid formula can be semantically incorrect, and detecting such errors
-requires formal equivalence checking or human review.
+Beyond these experimental questions, several design decisions remain
+open, including the degree of human involvement, the choice of semantic
+validation strategy, and the path toward fine-tuning. We discuss these
+in Section~\ref{sec:future}.
 
 
 % =============================================================================
-\section{Future Work}
+\section{Open Questions and Future Directions}
 \label{sec:future}
 % =============================================================================
-% Critical — the project continues. Write so that future-me can pick up where I left off.
-%
-% TODO: Cover all of the following as a continuous section (no subsections).
-%
-% Pipeline improvements:
-% - Deeper semantic validation: operator validity, time variable consistency,
-%   argument count/type checking, modifiers validation
-% - Entity extraction: unique naming enforcement, typing consistency,
-%   validate before passing to formula step
-% - Ambiguity review: only flag, never rewrite (rewriting introduced errors)
-% - Schema gaps: Constant.value is float-only, no arithmetic expressions
-%
-% Verification and batch processing:
-% - Roundtrip verification via cosine similarity (from pipeline diagram)
-% - Operational guardrails generation
-% - Entity deduplication across requirements
-% - Gap analysis: formalized requirements vs formalized test cases
-% - Coverage metrics
-%
-% Tool integration:
-% - Syntax checker, domain glossary, requirements database
-% - PydanticAI has strongest tool support
-%
-% Model and deployment:
-% - Cloud model testing (Claude, GPT-4) to establish quality ceiling
-% - Local vs cloud tradeoff for safety-critical environments
-% - Fine-tuning on domain-specific data
-% - Production: latency, cost, auditability
-% - Schema evolution as formalism matures
-% - Extended evaluation: all 10 requirements, human evaluation,
-%   comparison with manual formalization
-%
-% Alternative output representations:
-% - Investigate translating to C++ code instead of/alongside the predicate formalism
-%   — LLMs are heavily trained on code and may produce more reliable output
-%   in a programming language than in a custom formal notation
-% - Could serve as an intermediate representation or as a verification target
+
+The preliminary findings from this phase raise several questions that
+the next phase of the project will need to address through more
+comprehensive experimentation.
+
+\paragraph{Comprehensive evaluation.}
+The experiments reported in this work used small sample sizes and a
+limited set of models. Confirming the observed trends requires testing
+on the full set of avionics requirements with multiple runs per
+configuration, a broader range of models (including frontier cloud
+models with sufficient API access), and systematic comparison against
+manually produced ground-truth formalizations. Statistical significance
+testing is needed before any of the current findings can be stated as
+definitive results.
+
+\paragraph{Pipeline granularity.}
+Our preliminary results suggest that model capability determines whether
+a single-call or multi-call architecture is preferable, but this was
+observed on only four requirements with one run each. A controlled
+experiment varying model size, requirement complexity, and prompt
+structure is needed to establish when to use chain-of-thought within a
+single call and when to decompose into separate pipeline steps. The
+current pipeline's constraint formalization step may itself benefit from
+further decomposition, for example splitting temporal scope identification,
+condition construction, and effect construction into separate calls with
+validation between them. The optimal level of decomposition is an open
+question that likely depends on both the model and the complexity of the
+requirement.
+
+\paragraph{Output representation.}
+The finding that JSON outperforms Python on smaller models while the
+literature reports the opposite for frontier models needs further
+investigation. Testing with additional output formats, fine-tuned models
+familiar with the formalism's Python API, and a wider range of model
+sizes would clarify whether the advantage is a function of model
+capability, API familiarity, or schema complexity. Rather than committing
+to a single output format, a promising approach is to generate both JSON
+and Python output in parallel and select the result that passes
+validation, or scores higher when both are structurally valid. This
+ensemble strategy avoids the need to choose a single format and exploits
+the fact that the two representations tend to fail on different inputs.
+
+\paragraph{Semantic validation.}
+While semantic validation is outside the scope of this work, it is
+important to outline the problem since it directly affects the
+trustworthiness of the pipeline's output.
+Structural validation alone cannot detect the dominant class of errors:
+semantically incorrect but syntactically valid formulas. Possible
+approaches include roundtrip verification (translating the formula back
+to natural language and comparing with the original requirement), formal
+equivalence checking via model checkers once the formalism-to-LTL
+mapping is available, and human expert review. Another possible approach
+is adversarial LLM verification: after the pipeline generates output
+(a positive call), a second LLM call is prompted to challenge it (a
+negative call), asking targeted questions such as whether a specific
+entity from the requirement was missed, whether the temporal scope is
+correct, or whether the effect fully captures the intended behavior. The
+generator and the critic have different biases, so combining them can
+catch errors that neither would detect alone. This is the most critical
+open problem for making the pipeline trustworthy enough for use in
+safety-critical contexts.
+
+\paragraph{Dynamic example selection.}
+Following Xu et al.~\cite{xu2024nl2ltl}, retrieving the most relevant
+few-shot examples for each input via embedding similarity could improve
+accuracy, particularly as the library of correctly formalized
+requirements grows over time. This has not yet been tested.
+
+\paragraph{Deterministic translation to temporal logics.}
+Once the formalism stabilizes, a rule-based translator from the
+formalism to LTL (analogous to REQ2LTL's OnionL-to-LTL
+engine~\cite{ma2025req2ltl}) would enable formal verification of the
+output using established model checkers. This would also provide a path
+to semantic validation through equivalence checking.
+
+\paragraph{Human-in-the-loop design.}
+The pipeline will likely incorporate human review at key stages, as in
+nl2spec~\cite{cosler2023nl2spec} and
+REQ2LTL~\cite{ma2025req2ltl}. In a safety-critical context, autonomous
+formalization without expert oversight is unlikely to be acceptable. The
+specific review points (after entity extraction, after constraint
+generation, or both) and the interface for presenting intermediate
+results to reviewers remain to be designed.
+
+\paragraph{Fine-tuning as iterative improvement.}
+While fine-tuning was ruled out for the initial implementation due to the
+lack of training data~\cite{hahn2022formal}, it becomes a viable
+improvement path once human-in-the-loop review is in place. Each
+human-corrected formalization produces a validated
+requirement-to-formalism pair that can be accumulated into a training
+dataset over time. A model fine-tuned on these corrections would
+gradually reduce the rate of errors and the amount of human intervention
+needed, creating a feedback loop between human review and model
+improvement.
 
 
 % =============================================================================
@@ -551,28 +786,33 @@ requires formal equivalence checking or human review.
 \label{sec:conclusion}
 % =============================================================================
 
-% [Summary]
-% TODO: What we set out to do — investigate LLM pipelines for NLR formalization.
-% What we did — surveyed state of the art, designed a pipeline, prototyped in
-% four frameworks, ran 48 comparison tests, investigated model differences.
+This report investigated the use of large language models for
+automating the translation of natural-language avionics requirements
+into a domain-specific predicate formalism. We surveyed existing
+approaches to requirement formalization, identified key methodological
+patterns in the literature, designed a four-step pipeline with
+structural validation and retry, and conducted preliminary experiments
+comparing orchestration frameworks, output representations, task
+decomposition strategies, and model capability levels.
 
-% [Key findings]
-% TODO:
-% - The pipeline architecture works for simple-to-medium requirements
-% - Model capability is the bottleneck, not the framework
-% - CrewAI and PydanticAI continue as candidates
-% - Local 14B model is viable for development, insufficient for complex requirements
-% - Prompt engineering significantly affects output quality
+Four findings emerged from the experiments. First, model capability is
+the strongest predictor of output quality: a cloud model (Gemini)
+succeeded on all tested requirements including the most complex one,
+while a local 14B model failed consistently on complex requirements
+regardless of framework or prompt design. Second, JSON output
+outperformed Python on the local model (90\% vs 70\% structural
+success), contradicting prior work on frontier models and suggesting
+that the output format advantage depends on model capability. Third,
+chain-of-thought decomposition within a single call produced better
+temporal precision than a multi-call pipeline on stronger models, but
+weaker models benefited from the pipeline's simpler per-step schemas.
+Fourth, structured decomposition in the prompt improved results
+regardless of architecture, confirming findings from the literature.
 
-% [What this enables]
-% TODO: This work establishes the foundation — pipeline architecture, schemas,
-% prompts, and empirical data — for building a production requirement
-% formalization system in a DO-178C context.
-
-% [Next semester]
-% TODO: Priorities:
-% - Deeper validation (operators, time variables, arguments)
-% - Roundtrip verification
-% - Tool integration (syntax checker, glossary, requirements DB)
-% - Cloud model evaluation
-% - Scale to full requirement set with human evaluation
+These results are preliminary and based on small sample sizes. The
+next phase of the project will focus on comprehensive evaluation with
+larger requirement sets and multiple models, integration of
+human-in-the-loop review, and iterative improvement through
+fine-tuning on corrected formalizations. Semantic validation, the most
+critical open problem, remains outside the scope of the translation
+pipeline and will be addressed separately.
