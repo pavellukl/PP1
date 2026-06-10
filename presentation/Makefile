@@ -1,4 +1,8 @@
-# usage: make filename.pdf
+TEXINPUTS=./template//:
+
 %.pdf: %.tex
-	pdflatex $<
-	pdflatex $<
+	TEXINPUTS=$(TEXINPUTS) pdflatex $<
+	TEXINPUTS=$(TEXINPUTS) pdflatex $<
+
+clean:
+	rm -f *.aux *.log *.nav *.out *.snm *.toc *.vrb *.pdf
