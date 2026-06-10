@@ -31,6 +31,19 @@ CLAUDE.md
 *.fls
 *.fdb_latexmk
 *.synctex.gz
+*.toc
+*.nav
+*.snm
+*.vrb
 texput.log
-papers
+
+# Papers (downloaded PDFs, not tracked)
+papers/
 papers.md
+
+# Formalism PDF (colleague's deliverable)
+formalism.pdf
+
+# Compiled PDFs (regenerated from source)
+report/*.pdf
+presentation/*.pdf
