@@ -226,12 +226,9 @@
   \scriptsize
 
   \begin{quote}\itshape
-  ``Toggle valid\_range within 500\,ns of a write to d, if ALL:
-  \begin{itemize}\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}
-    \item[\textbullet] difference between last Max Peak and Min Peak of d $>$ 655
-    \item[\textbullet] second write to d after Min Peak detection
-    \item[\textbullet] signed value of d $>$ signed value of last d''
-  \end{itemize}
+  A complex avionics requirement involving a timed signal toggle
+  with multiple conditions: peak value comparison, event counting
+  after a detection event, and value comparison with a previous state.
   \end{quote}
 
   \smallskip
@@ -243,22 +240,22 @@
   \ttfamily\colorbox{green!20}{CausesWithin(} \\
   \ttfamily\quad\colorbox{green!20}{AllOf(} &
   \ttfamily\quad\colorbox{green!20}{AllOf(} \\
-  \ttfamily\quad\quad\colorbox{green!20}{Happening(ev\_write\_d),} &
-  \ttfamily\quad\quad\colorbox{green!20}{Happening(ev\_write\_d),} \\
-  \ttfamily\quad\quad\colorbox{green!20}{Val(d, \textit{at max peak})} &
+  \ttfamily\quad\quad\colorbox{green!20}{Happening(ev\_write),} &
+  \ttfamily\quad\quad\colorbox{green!20}{Happening(ev\_write),} \\
+  \ttfamily\quad\quad\colorbox{green!20}{Val(x, \textit{at max peak})} &
   \ttfamily\quad\quad\colorbox{yellow!30}{Val(max\_peak)} \\
-  \ttfamily\quad\quad\colorbox{green!20}{\;- Val(d, \textit{at min peak}) > 655,} &
-  \ttfamily\quad\quad\colorbox{yellow!30}{\;- Val(min\_peak) > 655,} \\
+  \ttfamily\quad\quad\colorbox{green!20}{\;- Val(x, \textit{at min peak}) > T,} &
+  \ttfamily\quad\quad\colorbox{yellow!30}{\;- Val(min\_peak) > T,} \\
   \ttfamily\quad\quad\colorbox{green!20}{EvtOccCount = 2,} &
   \ttfamily\quad\quad\colorbox{green!20}{EvtOccCount = 2,} \\
-  \ttfamily\quad\quad\colorbox{red!20}{Val(d) > Val(d, \textit{prev write})} &
-  \ttfamily\quad\quad\colorbox{red!20}{Val(d) > ValBefore(d)} \\
+  \ttfamily\quad\quad\colorbox{red!20}{Val(x) > Val(x, \textit{prev write})} &
+  \ttfamily\quad\quad\colorbox{red!20}{Val(x) > ValBefore(x)} \\
   \ttfamily\quad ),  &
   \ttfamily\quad ), \\
-  \ttfamily\quad\colorbox{green!20}{Val(vr) = $\neg$ValBefore(vr),} &
-  \ttfamily\quad\colorbox{green!20}{Val(vr) != ValBefore(vr),} \\
-  \ttfamily\quad\colorbox{green!20}{500ns} &
-  \ttfamily\quad\colorbox{green!20}{500ns} \\
+  \ttfamily\quad\colorbox{green!20}{Val(y) = $\neg$ValBefore(y),} &
+  \ttfamily\quad\colorbox{green!20}{Val(y) != ValBefore(y),} \\
+  \ttfamily\quad\colorbox{green!20}{duration} &
+  \ttfamily\quad\colorbox{green!20}{duration} \\
   \ttfamily ) & \ttfamily ) \\
   \end{tabular}
 
@@ -272,9 +269,9 @@
   \renewcommand{\arraystretch}{1.2}
   \begin{tabular}{lccc}
   & \textbf{Gemini/pipe} & \textbf{Gemini/CoT} & \textbf{Claude/CoT} \\
-  Peak diff & \cellcolor{red!20}$\times$ & \cellcolor{yellow!30}$\sim$ & \cellcolor{green!20}\checkmark \\
-  Toggle & \cellcolor{red!20}$\times$ & \cellcolor{green!20}\checkmark & \cellcolor{green!20}\checkmark \\
-  ``Last d'' & \cellcolor{red!20}$\times$ & \cellcolor{red!20}$\times$ & \cellcolor{red!20}$\times$ \\
+  Peak lookup & \cellcolor{red!20}$\times$ & \cellcolor{yellow!30}$\sim$ & \cellcolor{green!20}\checkmark \\
+  Toggle effect & \cellcolor{red!20}$\times$ & \cellcolor{green!20}\checkmark & \cellcolor{green!20}\checkmark \\
+  Prev.\ value & \cellcolor{red!20}$\times$ & \cellcolor{red!20}$\times$ & \cellcolor{red!20}$\times$ \\
   \end{tabular}
 \end{frame}
 
