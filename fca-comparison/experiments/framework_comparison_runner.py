@@ -13,7 +13,7 @@ FRAMEWORKS = ["pydantic-ai", "haystack", "langgraph", "crewai"]
 REQUIREMENTS = [2, 3, 6, 8]
 RUNS_PER_COMBO = 3
 
-VENV_PYTHON = Path(__file__).parent / ".venv" / "bin" / "python"
+VENV_PYTHON = Path(__file__).parent.parent / ".venv" / "bin" / "python"
 
 results = []
 
